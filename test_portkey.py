@@ -5,6 +5,7 @@ A CLI tool to test multiple models through the Portkey AI gateway.
 """
 
 import sys
+import time
 from typing import List, Optional
 from portkey_ai import Portkey
 
@@ -63,6 +64,9 @@ def test_model(client: Portkey, model_slug: str) -> bool:
     print("-" * 60)
     
     try:
+        # Measure response time
+        start_time = time.time()
+        
         # Send a test completion request
         response = client.chat.completions.create(
             messages=[
@@ -79,6 +83,9 @@ def test_model(client: Portkey, model_slug: str) -> bool:
             max_tokens=50  # Keep it short for testing
         )
         
+        # Calculate response time
+        response_time = time.time() - start_time
+        
         # Check for successful response
         if response and hasattr(response, 'choices') and len(response.choices) > 0:
             first_choice = response.choices[0]
@@ -90,6 +97,7 @@ def test_model(client: Portkey, model_slug: str) -> bool:
             # Show model information
             actual_model = response.model if hasattr(response, 'model') else 'Unknown'
             print(f"   Response from model: {actual_model}")
+            print(f"   ⏱️  Response time: {response_time:.2f}s")
             print(f"   ➜ Please verify this is the correct routing for your config.")
             print(f"")
             print(f"   Sample response: {content[:100]}...")  # Preview first 100 chars
