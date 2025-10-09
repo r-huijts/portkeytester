@@ -64,8 +64,9 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     # Script was sourced - venv is already active
     echo "🎉 Virtual environment is now active!"
     echo ""
-    echo "To run the Portkey tester:"
-    echo "  python test_portkey.py"
+    echo "To run the Portkey testers:"
+    echo "  python test_portkey.py        # Test chat completions"
+    echo "  python test_embeddings.py     # Test embeddings"
     echo ""
     echo "To deactivate when done:"
     echo "  deactivate"
@@ -79,8 +80,9 @@ else
     echo "Or re-run this script with 'source' to auto-activate:"
     echo "  source ./install.sh"
     echo ""
-    echo "Then run the tester:"
-    echo "  python test_portkey.py"
+    echo "Then run the testers:"
+    echo "  python test_portkey.py        # Test chat completions"
+    echo "  python test_embeddings.py     # Test embeddings"
 fi
 echo ""
 
