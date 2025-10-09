@@ -84,12 +84,16 @@ def test_model(client: Portkey, model_slug: str) -> bool:
             first_choice = response.choices[0]
             content = first_choice.message.content if hasattr(first_choice.message, 'content') else 'No content'
             
-            print(f"✅ Success!")
-            print(f"   Response: {content[:100]}...")  # Preview first 100 chars
+            print(f"✅ Response Success! API Key is working.")
+            print(f"   Requested model: {model_slug}")
             
-            # Show additional metadata if available
-            if hasattr(response, 'model'):
-                print(f"   Model used: {response.model}")
+            # Show model information
+            actual_model = response.model if hasattr(response, 'model') else 'Unknown'
+            print(f"   Response from model: {actual_model}")
+            print(f"   ➜ Please verify this is the correct routing for your config.")
+            print(f"")
+            print(f"   Sample response: {content[:100]}...")  # Preview first 100 chars
+            
             if hasattr(response, 'usage'):
                 print(f"   Tokens used: {response.usage}")
             
@@ -100,7 +104,36 @@ def test_model(client: Portkey, model_slug: str) -> bool:
             return False
             
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"❌ Error: {type(e).__name__}")
+        print(f"   Message: {str(e)}")
+        
+        # Check for HTTP-related error attributes
+        if hasattr(e, 'status_code'):
+            print(f"   HTTP Status: {e.status_code}")
+        
+        # Get response body if available (avoid duplication with error.body)
+        if hasattr(e, 'response') and not hasattr(e, 'body'):
+            try:
+                response_body = e.response
+                if hasattr(response_body, 'text'):
+                    print(f"   Response Body: {response_body.text[:500]}")  # First 500 chars
+                elif hasattr(response_body, 'json'):
+                    print(f"   Response JSON: {response_body.json()}")
+                else:
+                    print(f"   Response: {str(response_body)[:500]}")
+            except:
+                pass
+        
+        # Check for Portkey-specific error metadata (prioritize this over response)
+        if hasattr(e, 'body') and e.body:
+            print(f"   Details: {e.body}")
+        
+        # Show additional error attributes (but skip 'message' to avoid duplication)
+        error_attrs = ['code', 'type', 'param']
+        for attr in error_attrs:
+            if hasattr(e, attr) and getattr(e, attr):
+                print(f"   {attr.capitalize()}: {getattr(e, attr)}")
+        
         return False
 
 
