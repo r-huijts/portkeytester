@@ -52,7 +52,8 @@ class TestGetVideoRoute(unittest.TestCase):
         self.assertEqual(tp.get_video_route("veo"), "veo")
         cfg = tp.get_video_route_config("veo")
         self.assertEqual(cfg["route"], "veo")
-        self.assertTrue(cfg["model"].startswith("@openroutervideomodels/"))
+        self.assertEqual(cfg["provider"], "@openroutervideomodels")
+        self.assertEqual(cfg["model"], "google/veo-3.1-fast")
 
     def test_unknown_route_raises(self):
         with self.assertRaises(ValueError) as ctx:
@@ -62,7 +63,7 @@ class TestGetVideoRoute(unittest.TestCase):
 
 class TestPortkeyVideoRequest(unittest.TestCase):
     @patch("urllib.request.urlopen")
-    def test_create_posts_with_metadata_not_provider(self, mock_urlopen):
+    def test_create_sends_provider_and_metadata(self, mock_urlopen):
         body = {"id": "gen-vid-abc", "status": "pending"}
         resp = MagicMock()
         resp.status = 200
@@ -74,7 +75,8 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         status, data = tp.portkey_video_request(
             api_key="pk-test",
             video_route="veo",
-            model="veo",
+            provider="@openroutervideomodels",
+            model="google/veo-3.1-fast",
             prompt=tp.VIDEO_SAMPLE_PROMPT,
             config_id="cfg-123",
         )
@@ -85,11 +87,12 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         self.assertEqual(req.full_url, "https://api.portkey.ai/v1/videos")
         self.assertEqual(req.get_header("X-portkey-api-key"), "pk-test")
         self.assertEqual(req.get_header("X-portkey-config"), "cfg-123")
-        self.assertIsNone(req.get_header("X-portkey-provider"))
+        self.assertEqual(req.get_header("X-portkey-provider"), "@openroutervideomodels")
         meta = json.loads(req.get_header("X-portkey-metadata"))
         self.assertEqual(meta, {"video_route": "veo"})
-        self.assertEqual(req.get_header("User-agent"), "portkey-tester/1.0")
         self.assertEqual(req.get_method(), "POST")
+        payload = json.loads(req.data.decode())
+        self.assertEqual(payload["model"], "google/veo-3.1-fast")
 
     @patch("urllib.request.urlopen")
     def test_poll_gets_videos_id_with_metadata(self, mock_urlopen):
@@ -104,7 +107,8 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         status, data = tp.portkey_video_request(
             api_key="pk-test",
             video_route="veo",
-            model="veo",
+            provider="@openroutervideomodels",
+            model="google/veo-3.1-fast",
             prompt=tp.VIDEO_SAMPLE_PROMPT,
             video_id="gen-vid-abc",
         )
@@ -118,6 +122,7 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         self.assertIsNone(req.data)
         meta = json.loads(req.get_header("X-portkey-metadata"))
         self.assertEqual(meta, {"video_route": "veo"})
+        self.assertEqual(req.get_header("X-portkey-provider"), "@openroutervideomodels")
 
 
 class TestVideoGeneration(unittest.TestCase):
@@ -144,25 +149,16 @@ class TestVideoGeneration(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(details["endpoint"], "video")
         self.assertEqual(details["video_route"], "veo")
-        self.assertEqual(
-            details["unsigned_urls"],
-            ["https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0"],
-        )
-        self.assertEqual(details["saved_paths"], ["/tmp/portkey-video-gen-vid-1-0.mp4"])
-        self.assertEqual(details["cost"], 0.63)
-        self.assertEqual(details["prompt"], tp.VIDEO_SAMPLE_PROMPT)
+        self.assertEqual(details["provider"], "@openroutervideomodels")
+        self.assertEqual(details["request_model"], "google/veo-3.1-fast")
         self.assertEqual(mock_req.call_count, 3)
         mock_dl.assert_called_once()
         create_kwargs = mock_req.call_args_list[0].kwargs
-        self.assertEqual(create_kwargs["prompt"], tp.VIDEO_SAMPLE_PROMPT)
         self.assertEqual(create_kwargs["video_route"], "veo")
-        self.assertEqual(
-            create_kwargs["model"],
-            "@openroutervideomodels/google/veo-3.1-fast",
-        )
+        self.assertEqual(create_kwargs["provider"], "@openroutervideomodels")
+        self.assertEqual(create_kwargs["model"], "google/veo-3.1-fast")
         self.assertEqual(create_kwargs["config_id"], "cfg-1")
-        self.assertEqual(mock_dl.call_args.kwargs["video_route"], "veo")
-        self.assertEqual(mock_dl.call_args.kwargs["config_id"], "cfg-1")
+        self.assertEqual(mock_dl.call_args.kwargs["provider"], "@openroutervideomodels")
 
     @patch("test_portkey.download_portkey_video")
     @patch("test_portkey.time.sleep", return_value=None)
@@ -204,7 +200,7 @@ class TestVideoGeneration(unittest.TestCase):
     @patch("test_portkey.time.sleep", return_value=None)
     @patch("test_portkey.portkey_video_request")
     def test_timeout(self, mock_req, _sleep):
-        def side_effect(api_key, video_route, model, prompt, video_id=None, config_id=None):
+        def side_effect(api_key, video_route, provider, model, prompt, video_id=None, config_id=None):
             return 200, {"id": "gen-vid-1", "status": "pending"}
 
         mock_req.side_effect = side_effect

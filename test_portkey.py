@@ -65,18 +65,20 @@ VIDEO_WAIT_MESSAGES = (
     "The hamster wheel has entered turbo mode...",
 )
 
-# Tester slug → Portkey metadata.video_route + Model Catalog model for the request body.
-# The @provider/model form attaches AI Provider credentials (needed for /v1/videos).
+# Tester slug → metadata.video_route + AI Provider + upstream model.
+# Portkey /v1/videos needs x-portkey-provider for auth; metadata carries the
+# route through create → poll → download for conditional config.
 VIDEO_ROUTES = {
     "veo": {
         "route": "veo",
-        "model": "@openroutervideomodels/google/veo-3.1-fast",
+        "provider": "@openroutervideomodels",
+        "model": "google/veo-3.1-fast",
     },
 }
 
 
 def get_video_route_config(model_slug: str) -> Dict[str, str]:
-    """Return {route, model} for a video tester slug."""
+    """Return {route, provider, model} for a video tester slug."""
     try:
         cfg = VIDEO_ROUTES[model_slug]
     except KeyError:
@@ -84,7 +86,11 @@ def get_video_route_config(model_slug: str) -> Dict[str, str]:
         raise ValueError(
             f"No video route configured for model: {model_slug}. Known: {known}"
         )
-    return {"route": cfg["route"], "model": cfg["model"]}
+    return {
+        "route": cfg["route"],
+        "provider": cfg["provider"],
+        "model": cfg["model"],
+    }
 
 
 def get_video_route(model_slug: str) -> str:
@@ -132,6 +138,7 @@ def video_save_path(model_slug: str, index: int = 0, when: Optional[datetime] = 
 def download_portkey_video(
     api_key: str,
     video_route: str,
+    provider: str,
     video_id: str,
     index: int = 0,
     model_slug: Optional[str] = None,
@@ -156,6 +163,7 @@ def download_portkey_video(
         "Accept": "*/*",
         "User-Agent": "portkey-tester/1.0",
         "x-portkey-api-key": api_key,
+        "x-portkey-provider": provider,
         "x-portkey-metadata": json.dumps({"video_route": video_route}),
     }
     if config_id:
@@ -183,6 +191,7 @@ def download_portkey_video(
 def portkey_video_request(
     api_key: str,
     video_route: str,
+    provider: str,
     model: str,
     prompt: str,
     video_id: Optional[str] = None,
@@ -196,6 +205,7 @@ def portkey_video_request(
         "Accept": "application/json",
         "User-Agent": "portkey-tester/1.0",
         "x-portkey-api-key": api_key,
+        "x-portkey-provider": provider,
         "x-portkey-metadata": json.dumps({"video_route": video_route}),
     }
     if config_id:
@@ -243,6 +253,7 @@ def test_video_generation(
     video_prompt = prompt or VIDEO_SAMPLE_PROMPT
     route_cfg = get_video_route_config(model_slug)
     video_route = route_cfg["route"]
+    provider = route_cfg["provider"]
     request_model = route_cfg["model"]
     if on_status_update:
         on_status_update("Queued — meme factory warming up...")
@@ -250,6 +261,7 @@ def test_video_generation(
     status, create_body = portkey_video_request(
         api_key=api_key,
         video_route=video_route,
+        provider=provider,
         model=request_model,
         prompt=video_prompt,
         config_id=config_id,
@@ -286,6 +298,7 @@ def test_video_generation(
         status, poll_body = portkey_video_request(
             api_key=api_key,
             video_route=video_route,
+            provider=provider,
             model=request_model,
             prompt=video_prompt,
             video_id=video_id,
@@ -324,6 +337,7 @@ def test_video_generation(
                 ok_dl, path_or_err = download_portkey_video(
                     api_key=api_key,
                     video_route=video_route,
+                    provider=provider,
                     video_id=video_id,
                     index=i,
                     model_slug=model_slug,
@@ -343,6 +357,7 @@ def test_video_generation(
                 "id": video_id,
                 "prompt": video_prompt,
                 "video_route": video_route,
+                "provider": provider,
                 "unsigned_urls": portkey_urls,
                 "saved_paths": saved_paths,
                 "cost": cost,

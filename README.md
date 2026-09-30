@@ -104,22 +104,13 @@ Flow (config chooses the upstream provider — no `x-portkey-provider` header):
 2. `GET https://api.portkey.ai/v1/videos/{id}` — poll every 5s (8 minute timeout); same metadata so GETs still route correctly
 3. `GET https://api.portkey.ai/v1/videos/{id}/content` — download through Portkey with the same metadata
 
-**Routing:** type the short slug `veo`. The tester sends:
-- `x-portkey-metadata: {"video_route":"veo"}` on create/poll/download (for config conditions)
-- request body `model: "@openroutervideomodels/google/veo-3.1-fast"` (Model Catalog provider slug — this is what attaches credentials)
+**Routing:** type the short slug `veo`. The tester sends on create/poll/download:
 
-Keep `custom_host` **off** on the `veo` target unless you confirm it still injects AI Provider auth. Prefer:
+- `x-portkey-provider: @openroutervideomodels` — required for Portkey `/v1/videos` auth (AI Provider slug)
+- `x-portkey-metadata: {"video_route":"veo"}` — for config conditions on poll/download
+- body `model: "google/veo-3.1-fast"` on create
 
-```json
-{
-  "name": "veo",
-  "override_params": {
-    "model": "@openroutervideomodels/google/veo-3.1-fast"
-  }
-}
-```
-
-Add more slugs in `VIDEO_ROUTES` in `test_portkey.py` as you add targets.
+`VIDEO_ROUTES` in `test_portkey.py` owns the mapping. Metadata alone / `@provider/model` in the body was not enough for this endpoint (401 with `custom_host`, 404 without).
 
 **Default prompt** (overridable): a meme-style clip of a CS student celebrating when code finally compiles.
 
@@ -196,30 +187,28 @@ curl --request POST \
 
 ### Video (create + poll + download)
 
-Uses Portkey conditional config + metadata (not `x-portkey-provider`):
-
 ```bash
 # Create
 curl --request POST \
   --url https://api.portkey.ai/v1/videos \
   --header 'content-type: application/json' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-config: YOUR_CONFIG_ID' \
+  --header 'x-portkey-provider: @openroutervideomodels' \
   --header 'x-portkey-metadata: {"video_route":"veo"}' \
-  --data '{"model":"veo","prompt":"a rubber duck debugging at 3am"}'
+  --data '{"model":"google/veo-3.1-fast","prompt":"a rubber duck debugging at 3am"}'
 
-# Poll (replace JOB_ID) — metadata keeps the same video route on GET
+# Poll (replace JOB_ID)
 curl --request GET \
   --url https://api.portkey.ai/v1/videos/JOB_ID \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-config: YOUR_CONFIG_ID' \
+  --header 'x-portkey-provider: @openroutervideomodels' \
   --header 'x-portkey-metadata: {"video_route":"veo"}'
 
 # Download
 curl --request GET \
   --url 'https://api.portkey.ai/v1/videos/JOB_ID/content?index=0' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-config: YOUR_CONFIG_ID' \
+  --header 'x-portkey-provider: @openroutervideomodels' \
   --header 'x-portkey-metadata: {"video_route":"veo"}' \
   --output video/out.mp4
 ```
