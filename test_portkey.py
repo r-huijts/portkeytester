@@ -22,6 +22,66 @@ import wave
 # Initialize Rich console
 console = Console()
 
+VIDEO_SAMPLE_PROMPT = "A serene mountain landscape at sunset with clouds drifting by"
+VIDEO_POLL_INTERVAL_SEC = 5.0
+VIDEO_POLL_TIMEOUT_SEC = 480.0  # 8 minutes
+
+
+def interpret_video_poll_payload(payload: Dict[str, Any]) -> str:
+    """Classify a video poll JSON body into a terminal or pending outcome."""
+    status = (payload.get("status") or "").lower()
+    if status in ("failed", "error", "cancelled"):
+        return "failed"
+    if status == "completed":
+        urls = payload.get("unsigned_urls") or []
+        if isinstance(urls, list) and len(urls) > 0:
+            return "completed"
+        return "completed_no_urls"
+    return "pending"
+
+
+def portkey_video_request(
+    api_key: str,
+    provider: str,
+    model: str,
+    prompt: str,
+    video_id: Optional[str] = None,
+) -> Tuple[int, Dict[str, Any]]:
+    """POST create or poll against Portkey /v1/videos (raw HTTP)."""
+    import urllib.request
+    import urllib.error
+
+    url = "https://api.portkey.ai/v1/videos"
+    if video_id:
+        url = f"{url}/{video_id}"
+
+    payload = json.dumps({"model": model, "prompt": prompt}).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-portkey-api-key": api_key,
+            "x-portkey-provider": provider,
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            raw = resp.read().decode(errors="replace")
+            status = resp.status
+    except urllib.error.HTTPError as e:
+        status = e.code
+        raw = e.read().decode(errors="replace")
+
+    try:
+        data = json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        data = {"raw": raw}
+    if not isinstance(data, dict):
+        data = {"raw": data}
+    return status, data
+
 
 def print_banner():
     """Print a fancy banner because why not."""
