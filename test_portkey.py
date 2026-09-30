@@ -61,6 +61,8 @@ def portkey_video_request(
         data=payload,
         headers={
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "portkey-tester/1.0",
             "x-portkey-api-key": api_key,
             "x-portkey-provider": provider,
         },
@@ -574,6 +576,7 @@ def test_model(
             return True, test_details
         else:
             test_details['error'] = result.get('error', 'Unknown error')
+            test_details['response_time'] = response_time
             return False, test_details
             
     except Exception as e:
@@ -801,25 +804,26 @@ def main():
         console.print()
         
         for model_slug, details in results.items():
-            if not details['success'] and isinstance(details['error'], dict):
-                # Build panel content — use Text + json.dumps to avoid Rich's
-                # renderable-container limitations.  json.dumps produces the
-                # same visual output as Pretty(...) without needing a Group.
+            if not details['success'] and details.get('error') is not None:
                 error_lines = []
-                error_lines.append(
-                    f"[bold red]Error Type:[/bold red] {details['error']['type']}"
-                )
-                error_lines.append(
-                    f"[bold red]Message:[/bold red] {details['error']['message']}"
-                )
-                if details['error'].get('status_code'):
+                err = details['error']
+                if isinstance(err, dict):
                     error_lines.append(
-                        f"[bold red]HTTP Status:[/bold red] {details['error']['status_code']}"
+                        f"[bold red]Error Type:[/bold red] {err.get('type', 'Error')}"
                     )
-                if details['error'].get('body'):
-                    body_str = json.dumps(details['error']['body'], indent=2)
-                    error_lines.append("[bold red]Details:[/bold red]")
-                    error_lines.append(body_str)
+                    error_lines.append(
+                        f"[bold red]Message:[/bold red] {err.get('message', err)}"
+                    )
+                    if err.get('status_code'):
+                        error_lines.append(
+                            f"[bold red]HTTP Status:[/bold red] {err['status_code']}"
+                        )
+                    if err.get('body'):
+                        body_str = json.dumps(err['body'], indent=2)
+                        error_lines.append("[bold red]Details:[/bold red]")
+                        error_lines.append(body_str)
+                else:
+                    error_lines.append(f"[bold red]Message:[/bold red] {err}")
 
                 error_panel = Panel(
                     "\n".join(error_lines),

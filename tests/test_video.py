@@ -63,6 +63,7 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         self.assertEqual(req.full_url, "https://api.portkey.ai/v1/videos")
         self.assertEqual(req.get_header("X-portkey-api-key"), "pk-test")
         self.assertEqual(req.get_header("X-portkey-provider"), "@openroutervideomodels")
+        self.assertEqual(req.get_header("User-agent"), "portkey-tester/1.0")
         self.assertEqual(req.get_method(), "POST")
 
     @patch("urllib.request.urlopen")
