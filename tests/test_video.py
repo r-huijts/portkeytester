@@ -161,5 +161,16 @@ class TestPortkeyVideoContentUrl(unittest.TestCase):
         )
 
 
+class TestVideoWaitStatus(unittest.TestCase):
+    def test_rotates_and_omits_job_id(self):
+        msg0 = tp._video_wait_status(0, "pending", 12)
+        msg1 = tp._video_wait_status(1, "in_progress", 17)
+        self.assertNotEqual(msg0, msg1)
+        self.assertIn("pending", msg0)
+        self.assertIn("12s", msg0)
+        self.assertNotIn("gen-vid", msg0)
+        self.assertNotIn("gen-vid", msg1)
+
+
 if __name__ == "__main__":
     unittest.main()

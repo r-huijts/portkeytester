@@ -30,6 +30,25 @@ VIDEO_SAMPLE_PROMPT = (
 VIDEO_POLL_INTERVAL_SEC = 5.0
 VIDEO_POLL_TIMEOUT_SEC = 480.0  # 8 minutes
 
+VIDEO_WAIT_MESSAGES = (
+    "Teaching pixels how to meme...",
+    "Negotiating with the GPU hamsters...",
+    "The 3am student is almost celebrating...",
+    "Compiling vibes into video frames...",
+    "Not stuck — just fashionably late...",
+    "Asking the model nicely to hurry up...",
+    "Still cooking… resistance is futile...",
+    "Buffering greatness (yes, still working)...",
+    "Almost there* (*technically a guess)...",
+    "Summoning confetti for the victory scene...",
+)
+
+
+def _video_wait_status(poll_count: int, api_status: str, elapsed_sec: float) -> str:
+    """Rotate humorous wait copy so polling feels alive without leaking job IDs."""
+    funny = VIDEO_WAIT_MESSAGES[poll_count % len(VIDEO_WAIT_MESSAGES)]
+    return f"{funny} [{api_status}, {int(elapsed_sec)}s]"
+
 
 def interpret_video_poll_payload(payload: Dict[str, Any]) -> str:
     """Classify a video poll JSON body into a terminal or pending outcome."""
@@ -155,7 +174,7 @@ def test_video_generation(
 ) -> Tuple[bool, Dict[str, Any]]:
     """Create a video job via Portkey and poll until completed or timeout."""
     if on_status_update:
-        on_status_update("Creating video job...")
+        on_status_update("Queued — meme factory warming up...")
 
     status, create_body = portkey_video_request(
         api_key=api_key,
@@ -175,16 +194,20 @@ def test_video_generation(
             "error": f"Create response missing id: {create_body}",
         }
 
-    deadline = time.time() + VIDEO_POLL_TIMEOUT_SEC
+    started = time.time()
+    deadline = started + VIDEO_POLL_TIMEOUT_SEC
+    poll_count = 0
     while True:
         if time.time() >= deadline:
             return False, {
                 "endpoint": "video",
-                "error": f"Timeout after {VIDEO_POLL_TIMEOUT_SEC}s waiting for {video_id}",
+                "error": f"Timeout after {VIDEO_POLL_TIMEOUT_SEC}s waiting for video job",
             }
 
         if on_status_update:
-            on_status_update(f"Polling {video_id}...")
+            on_status_update(
+                _video_wait_status(poll_count, "waiting", time.time() - started)
+            )
 
         time.sleep(VIDEO_POLL_INTERVAL_SEC)
 
@@ -202,8 +225,12 @@ def test_video_generation(
             }
 
         outcome = interpret_video_poll_payload(poll_body)
+        api_status = str(poll_body.get("status") or outcome)
         if on_status_update:
-            on_status_update(f"Status: {poll_body.get('status', outcome)}")
+            on_status_update(
+                _video_wait_status(poll_count, api_status, time.time() - started)
+            )
+        poll_count += 1
 
         if outcome == "completed":
             usage = poll_body.get("usage")
@@ -217,7 +244,7 @@ def test_video_generation(
             ]
 
             if on_status_update:
-                on_status_update("Downloading video via Portkey...")
+                on_status_update("Snatching the masterpiece through Portkey...")
 
             saved_paths = []
             for i in range(len(upstream_urls)):
