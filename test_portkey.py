@@ -22,7 +22,11 @@ import wave
 # Initialize Rich console
 console = Console()
 
-VIDEO_SAMPLE_PROMPT = "A serene mountain landscape at sunset with clouds drifting by"
+VIDEO_SAMPLE_PROMPT = (
+    "A sleep-deprived computer science student in a hoodie stares at a laptop at 3am. "
+    "Suddenly the code compiles with zero errors — they leap up cheering as confetti "
+    "explodes like a sports victory meme, cinematic slow-motion, absurdly dramatic"
+)
 VIDEO_POLL_INTERVAL_SEC = 5.0
 VIDEO_POLL_TIMEOUT_SEC = 480.0  # 8 minutes
 
