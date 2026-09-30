@@ -40,11 +40,10 @@ python test_portkey.py
 | Step | Prompt | Notes |
 |------|--------|--------|
 | 1 | Portkey API key | Required (`x-portkey-api-key`) |
-| 2 | Config ID | Optional — press Enter to skip |
+| 2 | Config ID | Optional — press Enter to skip (recommended for video routing) |
 | 3 | Endpoint type | See menu below |
-| 4 | Provider | **Video only** — e.g. `@openroutervideomodels` |
-| 5 | Video prompt | **Video only** — Enter = default meme prompt, or type your own |
-| 6 | Model slugs | Comma-separated (e.g. `mistral-large, gpt-4`) |
+| 4 | Video prompt | **Video only** — Enter = default meme prompt, or type your own |
+| 5 | Model slugs | Comma-separated (video: use a known route slug, e.g. `veo`) |
 
 ### Endpoint menu
 
@@ -99,11 +98,13 @@ Generates a short silent WAV, sends it to transcriptions, and shows the returned
 
 ### Video
 
-Flow:
+Flow (config chooses the upstream provider — no `x-portkey-provider` header):
 
-1. `POST https://api.portkey.ai/v1/videos` — create job (needs `x-portkey-provider`)
-2. `GET https://api.portkey.ai/v1/videos/{id}` — poll every 5s (8 minute timeout) with rotating status messages
-3. `GET https://api.portkey.ai/v1/videos/{id}/content` — download through Portkey (no OpenRouter login required)
+1. `POST https://api.portkey.ai/v1/videos` — create job with `model` + `x-portkey-metadata: {"video_route":"<route>"}`
+2. `GET https://api.portkey.ai/v1/videos/{id}` — poll every 5s (8 minute timeout); same metadata so GETs still route correctly
+3. `GET https://api.portkey.ai/v1/videos/{id}/content` — download through Portkey with the same metadata
+
+**Routing:** the tester maps model slug → `metadata.video_route` via `VIDEO_ROUTES` (currently `veo` → `veo`). Your Portkey config should use conditional routing on `metadata.video_route` (and optionally `params.model`) to select the video target. Pass your config ID when prompted so create/poll/download share the same config.
 
 **Default prompt** (overridable): a meme-style clip of a CS student celebrating when code finally compiles.
 
@@ -113,20 +114,21 @@ Flow:
 video/portkey-video-YYYYMMDD-HHMMSS-<model-slug>.mp4
 ```
 
-That folder is gitignored. Results also show the Portkey content URL (use your Portkey API key + provider header — browser OpenRouter links will not work for gateway-only users).
+That folder is gitignored. Results also show the Portkey content URL.
 
 Example video session:
 
 ```text
+Enter config ID (optional, press Enter to skip): YOUR_CONFIG_ID
 Enter choice (1-6): 5
-Enter x-portkey-provider (e.g. @openroutervideomodels): @openroutervideomodels
 Enter video prompt (optional, press Enter for default):
-Enter model slugs (comma-separated): kwaivgi/kling-v3.0-std
+Enter model slugs (comma-separated): veo
 
 … spinner with humorous wait messages …
 
-✅ kwaivgi/kling-v3.0-std - video
-Saved locally: .../video/portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4
+✅ veo - video
+Video route: veo
+Saved locally: .../video/portkey-video-20260930-134512-veo.mp4
 ```
 
 ## Example model slugs
@@ -137,7 +139,7 @@ These depend on your Portkey dashboard / virtual keys:
 - **Embeddings**: `text-embedding-3-small`, `cohere-embed-v3`, …
 - **TTS**: `tts-1`, `tts-1-hd`
 - **STT**: `whisper-1`
-- **Video**: e.g. `kwaivgi/kling-v3.0-std` (plus a video-capable provider header)
+- **Video**: `veo` (maps to `metadata.video_route=veo` in config; add more entries in `VIDEO_ROUTES` as you add targets)
 
 ## How it works
 
@@ -179,26 +181,31 @@ curl --request POST \
 
 ### Video (create + poll + download)
 
+Uses Portkey conditional config + metadata (not `x-portkey-provider`):
+
 ```bash
 # Create
 curl --request POST \
   --url https://api.portkey.ai/v1/videos \
   --header 'content-type: application/json' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-provider: @openroutervideomodels' \
-  --data '{"model":"kwaivgi/kling-v3.0-std","prompt":"a rubber duck debugging at 3am"}'
+  --header 'x-portkey-config: YOUR_CONFIG_ID' \
+  --header 'x-portkey-metadata: {"video_route":"veo"}' \
+  --data '{"model":"veo","prompt":"a rubber duck debugging at 3am"}'
 
-# Poll (replace JOB_ID)
+# Poll (replace JOB_ID) — metadata keeps the same video route on GET
 curl --request GET \
   --url https://api.portkey.ai/v1/videos/JOB_ID \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-provider: @openroutervideomodels'
+  --header 'x-portkey-config: YOUR_CONFIG_ID' \
+  --header 'x-portkey-metadata: {"video_route":"veo"}'
 
 # Download
 curl --request GET \
   --url 'https://api.portkey.ai/v1/videos/JOB_ID/content?index=0' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-provider: @openroutervideomodels' \
+  --header 'x-portkey-config: YOUR_CONFIG_ID' \
+  --header 'x-portkey-metadata: {"video_route":"veo"}' \
   --output video/out.mp4
 ```
 
@@ -219,6 +226,8 @@ curl --request GET \
 | Model not found | Slug configured / virtual key correct |
 | Video `403` / Cloudflare `1010` | Unusual; the CLI sets a custom User-Agent — retry or check WAF |
 | Video poll `404` | Poll must be **GET** `/v1/videos/{id}` via Portkey |
+| Video wrong provider / default model | Ensure config ID is set and `metadata.video_route` matches a condition (e.g. `veo`) |
+| Unknown video model slug | Use a key from `VIDEO_ROUTES` (currently `veo`) or add a mapping |
 | OpenRouter URL needs login | Use Portkey content URL or the file under `video/` |
 | Config errors | Config ID exists and is allowed for your key |
 

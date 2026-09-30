@@ -65,6 +65,22 @@ VIDEO_WAIT_MESSAGES = (
     "The hamster wheel has entered turbo mode...",
 )
 
+# Model slug → Portkey conditional-routing metadata.video_route
+VIDEO_ROUTES = {
+    "veo": "veo",
+}
+
+
+def get_video_route(model_slug: str) -> str:
+    """Map a video model slug to metadata.video_route for Portkey conditional config."""
+    try:
+        return VIDEO_ROUTES[model_slug]
+    except KeyError:
+        known = ", ".join(sorted(VIDEO_ROUTES)) or "(none)"
+        raise ValueError(
+            f"No video route configured for model: {model_slug}. Known: {known}"
+        )
+
 
 def _video_wait_status(poll_count: int, api_status: str, elapsed_sec: float) -> str:
     """Rotate humorous wait copy so polling feels alive without leaking job IDs."""
@@ -105,11 +121,12 @@ def video_save_path(model_slug: str, index: int = 0, when: Optional[datetime] = 
 
 def download_portkey_video(
     api_key: str,
-    provider: str,
+    video_route: str,
     video_id: str,
     index: int = 0,
     model_slug: Optional[str] = None,
     dest_path: Optional[str] = None,
+    config_id: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
     Download video bytes via Portkey gateway and write to disk.
@@ -125,16 +142,16 @@ def download_portkey_video(
             return False, "model_slug or dest_path is required to save video"
         dest_path = video_save_path(model_slug, index)
 
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "*/*",
-            "User-Agent": "portkey-tester/1.0",
-            "x-portkey-api-key": api_key,
-            "x-portkey-provider": provider,
-        },
-        method="GET",
-    )
+    headers = {
+        "Accept": "*/*",
+        "User-Agent": "portkey-tester/1.0",
+        "x-portkey-api-key": api_key,
+        "x-portkey-metadata": json.dumps({"video_route": video_route}),
+    }
+    if config_id:
+        headers["x-portkey-config"] = config_id
+
+    req = urllib.request.Request(url, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(req) as resp:
             data = resp.read()
@@ -155,10 +172,11 @@ def download_portkey_video(
 
 def portkey_video_request(
     api_key: str,
-    provider: str,
+    video_route: str,
     model: str,
     prompt: str,
     video_id: Optional[str] = None,
+    config_id: Optional[str] = None,
 ) -> Tuple[int, Dict[str, Any]]:
     """Create (POST) or poll (GET) against Portkey /v1/videos (raw HTTP)."""
     import urllib.request
@@ -168,8 +186,10 @@ def portkey_video_request(
         "Accept": "application/json",
         "User-Agent": "portkey-tester/1.0",
         "x-portkey-api-key": api_key,
-        "x-portkey-provider": provider,
+        "x-portkey-metadata": json.dumps({"video_route": video_route}),
     }
+    if config_id:
+        headers["x-portkey-config"] = config_id
 
     if video_id:
         # OpenRouter video status is GET /v1/videos/{id} (no body)
@@ -204,21 +224,23 @@ def portkey_video_request(
 
 def test_video_generation(
     api_key: str,
-    provider: str,
     model_slug: str,
     on_status_update=None,
     prompt: Optional[str] = None,
+    config_id: Optional[str] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     """Create a video job via Portkey and poll until completed or timeout."""
     video_prompt = prompt or VIDEO_SAMPLE_PROMPT
+    video_route = get_video_route(model_slug)
     if on_status_update:
         on_status_update("Queued — meme factory warming up...")
 
     status, create_body = portkey_video_request(
         api_key=api_key,
-        provider=provider,
+        video_route=video_route,
         model=model_slug,
         prompt=video_prompt,
+        config_id=config_id,
     )
     if status >= 400:
         return False, {
@@ -251,10 +273,11 @@ def test_video_generation(
 
         status, poll_body = portkey_video_request(
             api_key=api_key,
-            provider=provider,
+            video_route=video_route,
             model=model_slug,
             prompt=video_prompt,
             video_id=video_id,
+            config_id=config_id,
         )
         if status >= 400:
             return False, {
@@ -288,10 +311,11 @@ def test_video_generation(
             for i in range(len(upstream_urls)):
                 ok_dl, path_or_err = download_portkey_video(
                     api_key=api_key,
-                    provider=provider,
+                    video_route=video_route,
                     video_id=video_id,
                     index=i,
                     model_slug=model_slug,
+                    config_id=config_id,
                 )
                 if not ok_dl:
                     return False, {
@@ -305,6 +329,7 @@ def test_video_generation(
                 "model": model_slug,
                 "id": video_id,
                 "prompt": video_prompt,
+                "video_route": video_route,
                 "unsigned_urls": portkey_urls,
                 "saved_paths": saved_paths,
                 "cost": cost,
@@ -347,23 +372,15 @@ def get_config_id() -> Optional[str]:
     return config_id if config_id else None
 
 
-def get_provider_header() -> str:
-    """Prompt for required x-portkey-provider (video mode)."""
-    provider = console.input(
-        "[bold]Enter x-portkey-provider[/bold] [dim](e.g. @openroutervideomodels)[/dim]: "
-    ).strip()
-    if not provider:
-        console.print("[bold red]❌ Error: Provider cannot be empty for video tests.[/bold red]")
-        sys.exit(1)
-    return provider
-
-
 def get_video_prompt() -> str:
     """Optional override for the hardcoded video sample prompt."""
     console.print(
         f"[dim]Default prompt:[/dim] {VIDEO_SAMPLE_PROMPT[:100]}..."
         if len(VIDEO_SAMPLE_PROMPT) > 100
         else f"[dim]Default prompt:[/dim] {VIDEO_SAMPLE_PROMPT}"
+    )
+    console.print(
+        f"[dim]Known video model slugs:[/dim] {', '.join(sorted(VIDEO_ROUTES))}"
     )
     custom = console.input(
         "[bold]Enter video prompt[/bold] [dim](optional, press Enter for default)[/dim]: "
@@ -640,9 +657,9 @@ def test_model(
     model_slug: str,
     forced_type: Optional[str] = None,
     on_status_update=None,
-    provider: Optional[str] = None,
     api_key: Optional[str] = None,
     video_prompt: Optional[str] = None,
+    config_id: Optional[str] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     """
     Test a single model by auto-detecting and using the appropriate endpoint.
@@ -652,9 +669,9 @@ def test_model(
         model_slug: Model identifier to test
         forced_type: Optional forced endpoint type
         on_status_update: Optional callback function(msg: str) to update status
-        provider: Required for video — value for x-portkey-provider
         api_key: Portkey API key (used for raw HTTP video calls)
         video_prompt: Optional prompt override for video generation
+        config_id: Optional Portkey config for video HTTP headers
     
     Returns:
         Tuple of (success: bool, details: dict)
@@ -698,16 +715,14 @@ def test_model(
                     success, result = test_speech_to_text(client, model_slug)
                 elif endpoint == 'video':
                     resolved_key = api_key or getattr(client, 'api_key', None)
-                    if not provider:
-                        raise ValueError("provider is required for video tests")
                     if not resolved_key:
                         raise ValueError("api_key is required for video tests")
                     success, result = test_video_generation(
                         api_key=resolved_key,
-                        provider=provider,
                         model_slug=model_slug,
                         on_status_update=on_status_update,
                         prompt=video_prompt,
+                        config_id=config_id,
                     )
                 
                 # If we got here without exception, check if it was logically successful
@@ -744,6 +759,7 @@ def test_model(
                 'cost': result.get('cost'),
                 'id': result.get('id'),
                 'prompt': result.get('prompt'),
+                'video_route': result.get('video_route'),
             })
             return True, test_details
         else:
@@ -776,10 +792,8 @@ def main():
     api_key = get_api_key()
     config_id = get_config_id()
     target_endpoint = get_target_endpoint_type()
-    provider = None
     video_prompt = None
     if target_endpoint == "video":
-        provider = get_provider_header()
         video_prompt = get_video_prompt()
     model_slugs = get_model_slugs()
     
@@ -793,8 +807,6 @@ def main():
     
     if target_endpoint:
         console.print(f"   [dim]Target Endpoint:[/dim] {target_endpoint}")
-    if provider:
-        console.print(f"   [dim]Provider:[/dim] {provider}")
     
     client = Portkey(**client_kwargs)
     
@@ -837,9 +849,9 @@ def main():
                 model_slug,
                 forced_type=target_endpoint,
                 on_status_update=update_status,
-                provider=provider,
                 api_key=api_key,
                 video_prompt=video_prompt,
+                config_id=config_id,
             )
             results[model_slug] = details
 
@@ -911,6 +923,8 @@ def main():
                 panel_content.append(f"[bold]Transcription:[/bold] \"{details.get('content', '')}\"")
             elif details['endpoint'] == 'video':
                 panel_content.append(f"[bold]Job ID:[/bold] {details.get('id', 'N/A')}")
+                if details.get('video_route'):
+                    panel_content.append(f"[bold]Video route:[/bold] {details['video_route']}")
                 if details.get('prompt'):
                     preview = details['prompt']
                     if len(preview) > 120:
@@ -922,7 +936,7 @@ def main():
                 panel_content.append("[bold]Portkey content URL(s):[/bold]")
                 for u in urls:
                     panel_content.append(f"[cyan]{u}[/cyan]")
-                panel_content.append("[dim]Fetch with your Portkey API key + provider header (browser OpenRouter links will not work).[/dim]")
+                panel_content.append("[dim]Fetch with your Portkey API key (+ config/metadata as needed).[/dim]")
                 saved = details.get('saved_paths') or []
                 if saved:
                     panel_content.append("[bold]Saved locally:[/bold]")

@@ -47,9 +47,19 @@ class TestInterpretVideoPollPayload(unittest.TestCase):
         )
 
 
+class TestGetVideoRoute(unittest.TestCase):
+    def test_known_route(self):
+        self.assertEqual(tp.get_video_route("veo"), "veo")
+
+    def test_unknown_route_raises(self):
+        with self.assertRaises(ValueError) as ctx:
+            tp.get_video_route("unknown-model")
+        self.assertIn("No video route configured", str(ctx.exception))
+
+
 class TestPortkeyVideoRequest(unittest.TestCase):
     @patch("urllib.request.urlopen")
-    def test_create_posts_to_videos_root(self, mock_urlopen):
+    def test_create_posts_with_metadata_not_provider(self, mock_urlopen):
         body = {"id": "gen-vid-abc", "status": "pending"}
         resp = MagicMock()
         resp.status = 200
@@ -60,9 +70,10 @@ class TestPortkeyVideoRequest(unittest.TestCase):
 
         status, data = tp.portkey_video_request(
             api_key="pk-test",
-            provider="@openroutervideomodels",
-            model="kwaivgi/kling-v3.0-std",
+            video_route="veo",
+            model="veo",
             prompt=tp.VIDEO_SAMPLE_PROMPT,
+            config_id="cfg-123",
         )
         self.assertEqual(status, 200)
         self.assertEqual(data["id"], "gen-vid-abc")
@@ -70,12 +81,15 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         req = mock_urlopen.call_args[0][0]
         self.assertEqual(req.full_url, "https://api.portkey.ai/v1/videos")
         self.assertEqual(req.get_header("X-portkey-api-key"), "pk-test")
-        self.assertEqual(req.get_header("X-portkey-provider"), "@openroutervideomodels")
+        self.assertEqual(req.get_header("X-portkey-config"), "cfg-123")
+        self.assertIsNone(req.get_header("X-portkey-provider"))
+        meta = json.loads(req.get_header("X-portkey-metadata"))
+        self.assertEqual(meta, {"video_route": "veo"})
         self.assertEqual(req.get_header("User-agent"), "portkey-tester/1.0")
         self.assertEqual(req.get_method(), "POST")
 
     @patch("urllib.request.urlopen")
-    def test_poll_gets_videos_id(self, mock_urlopen):
+    def test_poll_gets_videos_id_with_metadata(self, mock_urlopen):
         body = {"status": "pending", "id": "gen-vid-abc"}
         resp = MagicMock()
         resp.status = 200
@@ -86,8 +100,8 @@ class TestPortkeyVideoRequest(unittest.TestCase):
 
         status, data = tp.portkey_video_request(
             api_key="pk-test",
-            provider="@openroutervideomodels",
-            model="kwaivgi/kling-v3.0-std",
+            video_route="veo",
+            model="veo",
             prompt=tp.VIDEO_SAMPLE_PROMPT,
             video_id="gen-vid-abc",
         )
@@ -99,6 +113,8 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         )
         self.assertEqual(req.get_method(), "GET")
         self.assertIsNone(req.data)
+        meta = json.loads(req.get_header("X-portkey-metadata"))
+        self.assertEqual(meta, {"video_route": "veo"})
 
 
 class TestVideoGeneration(unittest.TestCase):
@@ -119,11 +135,12 @@ class TestVideoGeneration(unittest.TestCase):
         mock_dl.return_value = (True, "/tmp/portkey-video-gen-vid-1-0.mp4")
         ok, details = tp.test_video_generation(
             api_key="pk",
-            provider="@openroutervideomodels",
-            model_slug="kwaivgi/kling-v3.0-std",
+            model_slug="veo",
+            config_id="cfg-1",
         )
         self.assertTrue(ok)
         self.assertEqual(details["endpoint"], "video")
+        self.assertEqual(details["video_route"], "veo")
         self.assertEqual(
             details["unsigned_urls"],
             ["https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0"],
@@ -133,7 +150,12 @@ class TestVideoGeneration(unittest.TestCase):
         self.assertEqual(details["prompt"], tp.VIDEO_SAMPLE_PROMPT)
         self.assertEqual(mock_req.call_count, 3)
         mock_dl.assert_called_once()
-        self.assertEqual(mock_req.call_args_list[0].kwargs["prompt"], tp.VIDEO_SAMPLE_PROMPT)
+        create_kwargs = mock_req.call_args_list[0].kwargs
+        self.assertEqual(create_kwargs["prompt"], tp.VIDEO_SAMPLE_PROMPT)
+        self.assertEqual(create_kwargs["video_route"], "veo")
+        self.assertEqual(create_kwargs["config_id"], "cfg-1")
+        self.assertEqual(mock_dl.call_args.kwargs["video_route"], "veo")
+        self.assertEqual(mock_dl.call_args.kwargs["config_id"], "cfg-1")
 
     @patch("test_portkey.download_portkey_video")
     @patch("test_portkey.time.sleep", return_value=None)
@@ -150,7 +172,9 @@ class TestVideoGeneration(unittest.TestCase):
         mock_dl.return_value = (True, "/tmp/out.mp4")
         custom = "a rubber duck winning a hackathon"
         ok, details = tp.test_video_generation(
-            "pk", "@prov", "model", prompt=custom,
+            api_key="pk",
+            model_slug="veo",
+            prompt=custom,
         )
         self.assertTrue(ok)
         self.assertEqual(details["prompt"], custom)
@@ -160,20 +184,24 @@ class TestVideoGeneration(unittest.TestCase):
     @patch("test_portkey.portkey_video_request")
     def test_create_missing_id_fails(self, mock_req, _sleep):
         mock_req.return_value = (200, {"status": "pending"})
-        ok, details = tp.test_video_generation("pk", "@prov", "model")
+        ok, details = tp.test_video_generation(api_key="pk", model_slug="veo")
         self.assertFalse(ok)
         self.assertIn("error", details)
+
+    def test_unknown_model_slug_raises(self):
+        with self.assertRaises(ValueError):
+            tp.test_video_generation(api_key="pk", model_slug="not-a-route")
 
     @patch("test_portkey.VIDEO_POLL_TIMEOUT_SEC", 0.0)
     @patch("test_portkey.VIDEO_POLL_INTERVAL_SEC", 0.0)
     @patch("test_portkey.time.sleep", return_value=None)
     @patch("test_portkey.portkey_video_request")
     def test_timeout(self, mock_req, _sleep):
-        def side_effect(api_key, provider, model, prompt, video_id=None):
+        def side_effect(api_key, video_route, model, prompt, video_id=None, config_id=None):
             return 200, {"id": "gen-vid-1", "status": "pending"}
 
         mock_req.side_effect = side_effect
-        ok, details = tp.test_video_generation("pk", "@prov", "model")
+        ok, details = tp.test_video_generation(api_key="pk", model_slug="veo")
         self.assertFalse(ok)
         self.assertIn("timeout", str(details.get("error", "")).lower())
 
