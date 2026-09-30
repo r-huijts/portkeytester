@@ -100,19 +100,21 @@ class TestPortkeyVideoRequest(unittest.TestCase):
 
 
 class TestVideoGeneration(unittest.TestCase):
+    @patch("test_portkey.download_portkey_video")
     @patch("test_portkey.time.sleep", return_value=None)
     @patch("test_portkey.portkey_video_request")
-    def test_create_then_poll_until_completed(self, mock_req, _sleep):
+    def test_create_then_poll_until_completed(self, mock_req, _sleep, mock_dl):
         mock_req.side_effect = [
             (200, {"id": "gen-vid-1", "status": "pending"}),
             (200, {"status": "pending", "id": "gen-vid-1"}),
             (200, {
                 "status": "completed",
                 "id": "gen-vid-1",
-                "unsigned_urls": ["https://example.com/v"],
+                "unsigned_urls": ["https://openrouter.ai/api/v1/videos/gen-vid-1/content?index=0"],
                 "usage": {"cost": 0.63},
             }),
         ]
+        mock_dl.return_value = (True, "/tmp/portkey-video-gen-vid-1-0.mp4")
         ok, details = tp.test_video_generation(
             api_key="pk",
             provider="@openroutervideomodels",
@@ -120,9 +122,22 @@ class TestVideoGeneration(unittest.TestCase):
         )
         self.assertTrue(ok)
         self.assertEqual(details["endpoint"], "video")
-        self.assertEqual(details["unsigned_urls"], ["https://example.com/v"])
+        self.assertEqual(
+            details["unsigned_urls"],
+            ["https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0"],
+        )
+        self.assertEqual(details["saved_paths"], ["/tmp/portkey-video-gen-vid-1-0.mp4"])
         self.assertEqual(details["cost"], 0.63)
         self.assertEqual(mock_req.call_count, 3)
+        mock_dl.assert_called_once()
+
+
+class TestPortkeyVideoContentUrl(unittest.TestCase):
+    def test_builds_portkey_url(self):
+        self.assertEqual(
+            tp.portkey_video_content_url("gen-vid-1", 0),
+            "https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0",
+        )
 
     @patch("test_portkey.time.sleep", return_value=None)
     @patch("test_portkey.portkey_video_request")

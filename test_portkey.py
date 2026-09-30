@@ -41,6 +41,59 @@ def interpret_video_poll_payload(payload: Dict[str, Any]) -> str:
     return "pending"
 
 
+def portkey_video_content_url(video_id: str, index: int = 0) -> str:
+    """Build a Portkey gateway URL for video content (not the OpenRouter URL)."""
+    return f"https://api.portkey.ai/v1/videos/{video_id}/content?index={index}"
+
+
+def download_portkey_video(
+    api_key: str,
+    provider: str,
+    video_id: str,
+    index: int = 0,
+    dest_path: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Download video bytes via Portkey gateway and write to disk.
+
+    Returns (success, path_or_error_message).
+    """
+    import urllib.request
+    import urllib.error
+
+    url = portkey_video_content_url(video_id, index)
+    if dest_path is None:
+        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in video_id)
+        dest_path = os.path.abspath(f"portkey-video-{safe_id}-{index}.mp4")
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "*/*",
+            "User-Agent": "portkey-tester/1.0",
+            "x-portkey-api-key": api_key,
+            "x-portkey-provider": provider,
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            data = resp.read()
+            status = resp.status
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode(errors="replace")
+        return False, f"Download failed HTTP {e.code}: {err_body[:500]}"
+    except Exception as e:
+        return False, f"Download failed: {e}"
+
+    if status >= 400 or not data:
+        return False, f"Download failed HTTP {status} or empty body"
+
+    with open(dest_path, "wb") as f:
+        f.write(data)
+    return True, dest_path
+
+
 def portkey_video_request(
     api_key: str,
     provider: str,
@@ -153,11 +206,36 @@ def test_video_generation(
             cost = None
             if isinstance(usage, dict):
                 cost = usage.get("cost")
+
+            upstream_urls = list(poll_body.get("unsigned_urls") or [])
+            portkey_urls = [
+                portkey_video_content_url(video_id, i) for i in range(len(upstream_urls))
+            ]
+
+            if on_status_update:
+                on_status_update("Downloading video via Portkey...")
+
+            saved_paths = []
+            for i in range(len(upstream_urls)):
+                ok_dl, path_or_err = download_portkey_video(
+                    api_key=api_key,
+                    provider=provider,
+                    video_id=video_id,
+                    index=i,
+                )
+                if not ok_dl:
+                    return False, {
+                        "endpoint": "video",
+                        "error": path_or_err,
+                    }
+                saved_paths.append(path_or_err)
+
             return True, {
                 "endpoint": "video",
                 "model": model_slug,
                 "id": video_id,
-                "unsigned_urls": list(poll_body.get("unsigned_urls") or []),
+                "unsigned_urls": portkey_urls,
+                "saved_paths": saved_paths,
                 "cost": cost,
                 "usage": usage,
             }
@@ -575,6 +653,7 @@ def test_model(
                 'audio_size': result.get('audio_size'),
                 'usage': result.get('usage'),
                 'unsigned_urls': result.get('unsigned_urls'),
+                'saved_paths': result.get('saved_paths'),
                 'cost': result.get('cost'),
                 'id': result.get('id'),
             })
@@ -636,24 +715,33 @@ def main():
     
     results = {}
     
-    # Run tests with progress bar
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        console=console
-    ) as progress:
-        
-        task = progress.add_task("[cyan]Testing models...", total=len(model_slugs))
-        
+    # Run tests with progress UI
+    # Video: indeterminate spinner only (bar % = models done, meaningless while polling)
+    if target_endpoint == "video":
+        progress_cols = (
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+        )
+    else:
+        progress_cols = (
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+        )
+
+    with Progress(*progress_cols, console=console) as progress:
+        task = progress.add_task(
+            "[cyan]Testing models...",
+            total=None if target_endpoint == "video" else len(model_slugs),
+        )
+
         for model_slug in model_slugs:
             progress.update(task, description=f"[cyan]Testing {model_slug}...")
-            
-            # Test with status update callback
+
             def update_status(msg):
                 progress.update(task, description=f"[cyan]{model_slug}: {msg}")
-                
+
             success, details = test_model(
                 client,
                 model_slug,
@@ -663,10 +751,10 @@ def main():
                 api_key=api_key,
             )
             results[model_slug] = details
-            
-            progress.advance(task)
-        
-        # Update progress bar to show completion
+
+            if target_endpoint != "video":
+                progress.advance(task)
+
         progress.update(task, description="[green]✅ Tests completed")
     
     # Progress bar is now hidden - show results
@@ -735,9 +823,15 @@ def main():
                 if details.get('cost') is not None:
                     panel_content.append(f"[bold]Cost:[/bold] {details['cost']}")
                 urls = details.get('unsigned_urls') or []
-                panel_content.append("[bold]Video URL(s):[/bold]")
+                panel_content.append("[bold]Portkey content URL(s):[/bold]")
                 for u in urls:
                     panel_content.append(f"[cyan]{u}[/cyan]")
+                panel_content.append("[dim]Fetch with your Portkey API key + provider header (browser OpenRouter links will not work).[/dim]")
+                saved = details.get('saved_paths') or []
+                if saved:
+                    panel_content.append("[bold]Saved locally:[/bold]")
+                    for p in saved:
+                        panel_content.append(f"[green]{p}[/green]")
             
             # Create the panel
             success_panel = Panel(
@@ -775,12 +869,16 @@ def main():
     for model_slug, details in results.items():
         if details['success']:
             if details.get('endpoint') == 'video':
-                urls = details.get('unsigned_urls') or []
-                if urls:
-                    first = urls[0]
-                    detail_cell = (first[:60] + "...") if len(first) > 60 else first
+                saved = details.get('saved_paths') or []
+                if saved:
+                    detail_cell = saved[0]
                 else:
-                    detail_cell = 'N/A'
+                    urls = details.get('unsigned_urls') or []
+                    if urls:
+                        first = urls[0]
+                        detail_cell = (first[:60] + "...") if len(first) > 60 else first
+                    else:
+                        detail_cell = 'N/A'
             else:
                 detail_cell = details['response_model'] or 'N/A'
             table.add_row(

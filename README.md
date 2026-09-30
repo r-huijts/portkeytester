@@ -208,11 +208,13 @@ Enter model slugs (comma-separated): kwaivgi/kling-v3.0-std
 
 Job ID: gen-vid-...
 Cost: 0.63
-Video URL(s):
-https://openrouter.ai/api/v1/videos/.../content?index=0
+Portkey content URL(s):
+https://api.portkey.ai/v1/videos/gen-vid-.../content?index=0
+Saved locally:
+/path/to/portkey-video-gen-vid-...-0.mp4
 ```
 
-Video uses a hardcoded sample prompt, creates a job via `POST /v1/videos`, then polls `GET /v1/videos/{id}` every 5s (8 minute timeout) until `status` is `completed` and prints `unsigned_urls`.
+Video uses a hardcoded sample prompt, creates a job via `POST /v1/videos`, polls `GET /v1/videos/{id}` with an indeterminate spinner (no fake %), then downloads the file via Portkey `GET /v1/videos/{id}/content` so you do not need OpenRouter login. OpenRouter `unsigned_urls` are rewritten to Portkey gateway URLs.
 
 ## Example Model Slugs
 
