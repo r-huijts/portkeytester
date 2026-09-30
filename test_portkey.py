@@ -83,6 +83,89 @@ def portkey_video_request(
     return status, data
 
 
+def test_video_generation(
+    api_key: str,
+    provider: str,
+    model_slug: str,
+    on_status_update=None,
+) -> Tuple[bool, Dict[str, Any]]:
+    """Create a video job via Portkey and poll until completed or timeout."""
+    if on_status_update:
+        on_status_update("Creating video job...")
+
+    status, create_body = portkey_video_request(
+        api_key=api_key,
+        provider=provider,
+        model=model_slug,
+        prompt=VIDEO_SAMPLE_PROMPT,
+    )
+    if status >= 400:
+        return False, {
+            "endpoint": "video",
+            "error": f"Create failed HTTP {status}: {create_body}",
+        }
+    video_id = create_body.get("id")
+    if not video_id:
+        return False, {
+            "endpoint": "video",
+            "error": f"Create response missing id: {create_body}",
+        }
+
+    deadline = time.time() + VIDEO_POLL_TIMEOUT_SEC
+    while True:
+        if time.time() >= deadline:
+            return False, {
+                "endpoint": "video",
+                "error": f"Timeout after {VIDEO_POLL_TIMEOUT_SEC}s waiting for {video_id}",
+            }
+
+        if on_status_update:
+            on_status_update(f"Polling {video_id}...")
+
+        time.sleep(VIDEO_POLL_INTERVAL_SEC)
+
+        status, poll_body = portkey_video_request(
+            api_key=api_key,
+            provider=provider,
+            model=model_slug,
+            prompt=VIDEO_SAMPLE_PROMPT,
+            video_id=video_id,
+        )
+        if status >= 400:
+            return False, {
+                "endpoint": "video",
+                "error": f"Poll failed HTTP {status}: {poll_body}",
+            }
+
+        outcome = interpret_video_poll_payload(poll_body)
+        if on_status_update:
+            on_status_update(f"Status: {poll_body.get('status', outcome)}")
+
+        if outcome == "completed":
+            usage = poll_body.get("usage")
+            cost = None
+            if isinstance(usage, dict):
+                cost = usage.get("cost")
+            return True, {
+                "endpoint": "video",
+                "model": model_slug,
+                "id": video_id,
+                "unsigned_urls": list(poll_body.get("unsigned_urls") or []),
+                "cost": cost,
+                "usage": usage,
+            }
+        if outcome == "completed_no_urls":
+            return False, {
+                "endpoint": "video",
+                "error": f"Completed without unsigned_urls: {poll_body}",
+            }
+        if outcome == "failed":
+            return False, {
+                "endpoint": "video",
+                "error": f"Video job failed: {poll_body}",
+            }
+
+
 def print_banner():
     """Print a fancy banner because why not."""
     console.print(Panel(

@@ -90,5 +90,52 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         )
 
 
+class TestVideoGeneration(unittest.TestCase):
+    @patch("test_portkey.time.sleep", return_value=None)
+    @patch("test_portkey.portkey_video_request")
+    def test_create_then_poll_until_completed(self, mock_req, _sleep):
+        mock_req.side_effect = [
+            (200, {"id": "gen-vid-1", "status": "pending"}),
+            (200, {"status": "pending", "id": "gen-vid-1"}),
+            (200, {
+                "status": "completed",
+                "id": "gen-vid-1",
+                "unsigned_urls": ["https://example.com/v"],
+                "usage": {"cost": 0.63},
+            }),
+        ]
+        ok, details = tp.test_video_generation(
+            api_key="pk",
+            provider="@openroutervideomodels",
+            model_slug="kwaivgi/kling-v3.0-std",
+        )
+        self.assertTrue(ok)
+        self.assertEqual(details["endpoint"], "video")
+        self.assertEqual(details["unsigned_urls"], ["https://example.com/v"])
+        self.assertEqual(details["cost"], 0.63)
+        self.assertEqual(mock_req.call_count, 3)
+
+    @patch("test_portkey.time.sleep", return_value=None)
+    @patch("test_portkey.portkey_video_request")
+    def test_create_missing_id_fails(self, mock_req, _sleep):
+        mock_req.return_value = (200, {"status": "pending"})
+        ok, details = tp.test_video_generation("pk", "@prov", "model")
+        self.assertFalse(ok)
+        self.assertIn("error", details)
+
+    @patch("test_portkey.VIDEO_POLL_TIMEOUT_SEC", 0.0)
+    @patch("test_portkey.VIDEO_POLL_INTERVAL_SEC", 0.0)
+    @patch("test_portkey.time.sleep", return_value=None)
+    @patch("test_portkey.portkey_video_request")
+    def test_timeout(self, mock_req, _sleep):
+        def side_effect(api_key, provider, model, prompt, video_id=None):
+            return 200, {"id": "gen-vid-1", "status": "pending"}
+
+        mock_req.side_effect = side_effect
+        ok, details = tp.test_video_generation("pk", "@prov", "model")
+        self.assertFalse(ok)
+        self.assertIn("timeout", str(details.get("error", "")).lower())
+
+
 if __name__ == "__main__":
     unittest.main()
