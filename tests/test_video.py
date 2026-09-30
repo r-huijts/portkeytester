@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -159,6 +160,18 @@ class TestPortkeyVideoContentUrl(unittest.TestCase):
             tp.portkey_video_content_url("gen-vid-1", 0),
             "https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0",
         )
+
+
+class TestVideoSavePath(unittest.TestCase):
+    def test_includes_datetime_and_model_slug(self):
+        when = datetime(2026, 9, 30, 13, 45, 12)
+        path = tp.video_save_path("kwaivgi/kling-v3.0-std", when=when)
+        self.assertTrue(path.endswith("portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4"))
+
+    def test_index_suffix_for_extra_outputs(self):
+        when = datetime(2026, 9, 30, 13, 45, 12)
+        path = tp.video_save_path("model", index=2, when=when)
+        self.assertTrue(path.endswith("portkey-video-20260930-134512-model-2.mp4"))
 
 
 class TestVideoWaitStatus(unittest.TestCase):

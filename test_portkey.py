@@ -6,6 +6,7 @@ A CLI tool to test multiple models through the Portkey AI gateway.
 
 import sys
 import time
+from datetime import datetime
 from typing import List, Optional, Tuple, Dict, Any
 from portkey_ai import Portkey
 from rich.console import Console
@@ -16,6 +17,7 @@ from rich.syntax import Syntax
 from rich.rule import Rule
 import json
 import os
+import re
 import tempfile
 import wave
 
@@ -89,11 +91,22 @@ def portkey_video_content_url(video_id: str, index: int = 0) -> str:
     return f"https://api.portkey.ai/v1/videos/{video_id}/content?index={index}"
 
 
+def video_save_path(model_slug: str, index: int = 0, when: Optional[datetime] = None) -> str:
+    """Local filename: portkey-video-YYYYMMDD-HHMMSS-<model-slug>[-index].mp4"""
+    stamp = (when or datetime.now()).strftime("%Y%m%d-%H%M%S")
+    safe_slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", model_slug).strip("._-") or "model"
+    name = f"portkey-video-{stamp}-{safe_slug}"
+    if index > 0:
+        name = f"{name}-{index}"
+    return os.path.abspath(f"{name}.mp4")
+
+
 def download_portkey_video(
     api_key: str,
     provider: str,
     video_id: str,
     index: int = 0,
+    model_slug: Optional[str] = None,
     dest_path: Optional[str] = None,
 ) -> Tuple[bool, str]:
     """
@@ -106,8 +119,9 @@ def download_portkey_video(
 
     url = portkey_video_content_url(video_id, index)
     if dest_path is None:
-        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in video_id)
-        dest_path = os.path.abspath(f"portkey-video-{safe_id}-{index}.mp4")
+        if not model_slug:
+            return False, "model_slug or dest_path is required to save video"
+        dest_path = video_save_path(model_slug, index)
 
     req = urllib.request.Request(
         url,
@@ -273,6 +287,7 @@ def test_video_generation(
                     provider=provider,
                     video_id=video_id,
                     index=i,
+                    model_slug=model_slug,
                 )
                 if not ok_dl:
                     return False, {

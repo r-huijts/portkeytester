@@ -211,7 +211,7 @@ Cost: 0.63
 Portkey content URL(s):
 https://api.portkey.ai/v1/videos/gen-vid-.../content?index=0
 Saved locally:
-/path/to/portkey-video-gen-vid-...-0.mp4
+/path/to/portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4
 ```
 
 Video uses a hardcoded sample prompt, creates a job via `POST /v1/videos`, polls `GET /v1/videos/{id}` with an indeterminate spinner (no fake %), then downloads the file via Portkey `GET /v1/videos/{id}/content` so you do not need OpenRouter login. OpenRouter `unsigned_urls` are rewritten to Portkey gateway URLs.
