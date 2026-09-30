@@ -65,21 +65,31 @@ VIDEO_WAIT_MESSAGES = (
     "The hamster wheel has entered turbo mode...",
 )
 
-# Model slug → Portkey conditional-routing metadata.video_route
+# Tester slug → Portkey metadata.video_route + Model Catalog model for the request body.
+# The @provider/model form attaches AI Provider credentials (needed for /v1/videos).
 VIDEO_ROUTES = {
-    "veo": "veo",
+    "veo": {
+        "route": "veo",
+        "model": "@openroutervideomodels/google/veo-3.1-fast",
+    },
 }
 
 
-def get_video_route(model_slug: str) -> str:
-    """Map a video model slug to metadata.video_route for Portkey conditional config."""
+def get_video_route_config(model_slug: str) -> Dict[str, str]:
+    """Return {route, model} for a video tester slug."""
     try:
-        return VIDEO_ROUTES[model_slug]
+        cfg = VIDEO_ROUTES[model_slug]
     except KeyError:
         known = ", ".join(sorted(VIDEO_ROUTES)) or "(none)"
         raise ValueError(
             f"No video route configured for model: {model_slug}. Known: {known}"
         )
+    return {"route": cfg["route"], "model": cfg["model"]}
+
+
+def get_video_route(model_slug: str) -> str:
+    """Map a video model slug to metadata.video_route for Portkey conditional config."""
+    return get_video_route_config(model_slug)["route"]
 
 
 def _video_wait_status(poll_count: int, api_status: str, elapsed_sec: float) -> str:
@@ -231,14 +241,16 @@ def test_video_generation(
 ) -> Tuple[bool, Dict[str, Any]]:
     """Create a video job via Portkey and poll until completed or timeout."""
     video_prompt = prompt or VIDEO_SAMPLE_PROMPT
-    video_route = get_video_route(model_slug)
+    route_cfg = get_video_route_config(model_slug)
+    video_route = route_cfg["route"]
+    request_model = route_cfg["model"]
     if on_status_update:
         on_status_update("Queued — meme factory warming up...")
 
     status, create_body = portkey_video_request(
         api_key=api_key,
         video_route=video_route,
-        model=model_slug,
+        model=request_model,
         prompt=video_prompt,
         config_id=config_id,
     )
@@ -274,7 +286,7 @@ def test_video_generation(
         status, poll_body = portkey_video_request(
             api_key=api_key,
             video_route=video_route,
-            model=model_slug,
+            model=request_model,
             prompt=video_prompt,
             video_id=video_id,
             config_id=config_id,
@@ -327,6 +339,7 @@ def test_video_generation(
             return True, {
                 "endpoint": "video",
                 "model": model_slug,
+                "request_model": request_model,
                 "id": video_id,
                 "prompt": video_prompt,
                 "video_route": video_route,

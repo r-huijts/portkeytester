@@ -104,7 +104,22 @@ Flow (config chooses the upstream provider — no `x-portkey-provider` header):
 2. `GET https://api.portkey.ai/v1/videos/{id}` — poll every 5s (8 minute timeout); same metadata so GETs still route correctly
 3. `GET https://api.portkey.ai/v1/videos/{id}/content` — download through Portkey with the same metadata
 
-**Routing:** the tester maps model slug → `metadata.video_route` via `VIDEO_ROUTES` (currently `veo` → `veo`). Your Portkey config should use conditional routing on `metadata.video_route` (and optionally `params.model`) to select the video target. Pass your config ID when prompted so create/poll/download share the same config.
+**Routing:** type the short slug `veo`. The tester sends:
+- `x-portkey-metadata: {"video_route":"veo"}` on create/poll/download (for config conditions)
+- request body `model: "@openroutervideomodels/google/veo-3.1-fast"` (Model Catalog provider slug — this is what attaches credentials)
+
+Keep `custom_host` **off** on the `veo` target unless you confirm it still injects AI Provider auth. Prefer:
+
+```json
+{
+  "name": "veo",
+  "override_params": {
+    "model": "@openroutervideomodels/google/veo-3.1-fast"
+  }
+}
+```
+
+Add more slugs in `VIDEO_ROUTES` in `test_portkey.py` as you add targets.
 
 **Default prompt** (overridable): a meme-style clip of a CS student celebrating when code finally compiles.
 

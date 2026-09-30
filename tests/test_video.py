@@ -50,6 +50,9 @@ class TestInterpretVideoPollPayload(unittest.TestCase):
 class TestGetVideoRoute(unittest.TestCase):
     def test_known_route(self):
         self.assertEqual(tp.get_video_route("veo"), "veo")
+        cfg = tp.get_video_route_config("veo")
+        self.assertEqual(cfg["route"], "veo")
+        self.assertTrue(cfg["model"].startswith("@openroutervideomodels/"))
 
     def test_unknown_route_raises(self):
         with self.assertRaises(ValueError) as ctx:
@@ -153,6 +156,10 @@ class TestVideoGeneration(unittest.TestCase):
         create_kwargs = mock_req.call_args_list[0].kwargs
         self.assertEqual(create_kwargs["prompt"], tp.VIDEO_SAMPLE_PROMPT)
         self.assertEqual(create_kwargs["video_route"], "veo")
+        self.assertEqual(
+            create_kwargs["model"],
+            "@openroutervideomodels/google/veo-3.1-fast",
+        )
         self.assertEqual(create_kwargs["config_id"], "cfg-1")
         self.assertEqual(mock_dl.call_args.kwargs["video_route"], "veo")
         self.assertEqual(mock_dl.call_args.kwargs["config_id"], "cfg-1")
