@@ -1,271 +1,155 @@
 # Portkey AI Gateway Tester
 
-A command-line tool to test multiple models through the Portkey AI gateway using the Portkey Python SDK.
+A command-line tool to smoke-test models through the [Portkey AI gateway](https://portkey.ai/docs/api-reference/inference-api/introduction). It walks you through API key entry, endpoint selection, and model slugs, then reports pass/fail with response times and useful details.
 
 ## Features
 
-- 🎯 Support for multiple model types (chat, embeddings, TTS, STT, video)
-- 🤖 Auto-detects endpoint type based on model slug (video is explicit only)
-- ⚙️ Optional config ID/header support
-- 🔒 **Do Not Track support** for sensitive data compliance
-- 📊 Clear success/error reporting with response time
-- 🚀 Dynamic model routing via Portkey
-- 🔄 Automatic fallback if primary endpoint fails
-- 🎬 Video generation: create job, poll until complete, print `unsigned_urls`
-- 🎨 Beautiful terminal output with Rich library
-  - Animated progress bars and spinners
-  - Formatted tables with multiple columns
-  - Error panels with syntax highlighting
-  - Real-time status updates
-
-## Documentation
-
-This tool is built on top of the [Portkey Inference API](https://portkey.ai/docs/api-reference/inference-api/introduction). Portkey provides three ways to integrate:
-
-1. **Portkey SDKs** (Python and JavaScript) - Used by this tool
-2. **OpenAI SDK** through Portkey Gateway - Change base URL to `https://api.portkey.ai/v1`
-3. **REST API** - Direct HTTP calls to `https://api.portkey.ai/v1`
-
-For more information, visit the [Portkey API Reference](https://portkey.ai/docs/api-reference/inference-api/introduction).
+- Test **chat**, **embeddings**, **TTS**, **STT**, and **video** generation
+- Optional Portkey **config ID** for virtual keys / routing
+- **Auto-detect** endpoint from the model slug (video must be selected explicitly)
+- Automatic **fallback** across endpoints when auto-detect is wrong
+- Rich terminal UI: spinners, tables, success/error panels
+- Video: create → poll → download via Portkey into a local `video/` folder
 
 ## Installation
 
-### Quick Setup (Recommended)
+### Quick setup (recommended)
 
-Run the automated setup script with `source` to keep the virtual environment activated:
 ```bash
 source ./install.sh
 ```
 
-This will:
-- Create a virtual environment
-- Install all dependencies
-- Activate the virtual environment automatically
+Creates a venv, installs dependencies, and activates the environment. Or run `./install.sh` without `source` to set up without activating.
 
-Alternatively, run without `source` to just set up without activating:
-```bash
-./install.sh
-```
+### Manual setup
 
-### Manual Setup
-
-1. Clone or download this repository
-
-2. (Optional) Create a virtual environment:
 ```bash
 python3 -m venv venv
 source venv/bin/activate
-```
-
-3. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
 ## Usage
 
-Run the test script:
 ```bash
 python test_portkey.py
 ```
 
-The script will interactively prompt you for:
+### Prompts (in order)
 
-1. **Portkey API Key**: Your `x-portkey-api-key` value
-2. **Config ID** (optional): Portkey config ID for virtual keys/routing rules
-3. **Endpoint Type**: Select Chat, Embeddings, TTS, STT, Video, or Auto-detect
-4. **Provider** (Video only): Required `x-portkey-provider` value (e.g. `@openroutervideomodels`)
-5. **Video prompt** (Video only, optional): Press Enter for the default meme prompt, or type your own
-6. **Model Slugs**: Comma-separated list of model identifiers
+| Step | Prompt | Notes |
+|------|--------|--------|
+| 1 | Portkey API key | Required (`x-portkey-api-key`) |
+| 2 | Config ID | Optional — press Enter to skip |
+| 3 | Endpoint type | See menu below |
+| 4 | Provider | **Video only** — e.g. `@openroutervideomodels` |
+| 5 | Video prompt | **Video only** — Enter = default meme prompt, or type your own |
+| 6 | Model slugs | Comma-separated (e.g. `mistral-large, gpt-4`) |
 
-### Smart Endpoint Detection
-
-The script **automatically detects** which endpoint to use based on the model slug:
-- Models containing `"embed"` → Uses **embeddings endpoint** (`/embeddings`)
-- Models containing `"tts"` → Uses **text-to-speech endpoint** (`/audio/speech`)
-- Models containing `"whisper"` → Uses **speech-to-text endpoint** (`/audio/transcriptions`)
-- All other models → Uses **chat completions endpoint** (`/chat/completions`)
-
-**Video** is never auto-detected — select it explicitly from the menu.
-
-**Fallback Logic**: If the auto-detected endpoint fails, the script automatically tries the other endpoint.
-
-**Examples**:
-- `cohere-embed-v3` → Auto-detected as embeddings
-- `tts-1` → Auto-detected as text-to-speech
-- `whisper-1` → Auto-detected as speech-to-text
-- `mistral-large` → Auto-detected as chat
-- You can test multiple: `mistral-large, tts-1, whisper-1`
-
-### Example Session - Chat Completions
+### Endpoint menu
 
 ```
-🔑 Portkey AI Gateway Tester
-============================================================
-
-Enter your Portkey API key: ###
-Enter config ID (optional, press Enter to skip): 
-
-Select Endpoint Type:
 1. Chat Completions (default)
 2. Embeddings
 3. Text-to-Speech (TTS)
 4. Speech-to-Text (STT)
 5. Video
 6. Auto-detect based on slug
-Enter choice (1-6): 1
-
-Enter model slugs (comma-separated): mistral-large
-
-🔧 Initializing Portkey client...
-
-📊 Testing 1 model(s)...
-
-🧪 Testing model: mistral-large
-------------------------------------------------------------
-✅ Response Success! API Key is working.
-   Requested model: mistral-large
-   Endpoint used: chat
-   Response from model: mistral-large-2411
-   ⏱️  Response time: 1.23s
-   ➜ Please verify this is the correct routing for your config.
-
-   Sample response: Hello...
-   Tokens used: CompletionUsage(completion_tokens=2, prompt_tokens=25, total_tokens=27)
-
-============================================================
-📋 TEST SUMMARY
-============================================================
-  ✅ PASS - mistral-large
-
-Total: 1 passed, 0 failed
-============================================================
 ```
 
-### Example Session - Embeddings
+| Choice | What it does |
+|--------|----------------|
+| **Chat** | Short chat completion (“Say Hello…”) |
+| **Embeddings** | Embedding request + raw HTTP diagnostics |
+| **TTS** | Speech synthesis; checks that audio bytes are returned |
+| **STT** | Transcription of a generated silent WAV |
+| **Video** | Async create + poll + download through Portkey (see below) |
+| **Auto-detect** | Picks an endpoint from the slug; falls back if the first choice fails |
 
+### Auto-detect rules
+
+| Slug contains | Endpoint tried first |
+|---------------|----------------------|
+| `embed` | Embeddings |
+| `tts` | Text-to-Speech |
+| `whisper` | Speech-to-Text |
+| *(anything else)* | Chat |
+
+**Video is never auto-detected** — choose menu option `5`.
+
+Examples: `cohere-embed-v3` → embeddings · `tts-1` → TTS · `whisper-1` → STT · `mistral-large` → chat.
+
+## Endpoint details
+
+### Chat Completions
+
+Sends a small chat request. Retries with `max_completion_tokens` if the provider rejects `max_tokens`. Results show response preview and token usage when available.
+
+### Embeddings
+
+Calls `/embeddings` and prints dimension size. Also runs a raw HTTP probe for debugging gateway responses.
+
+### Text-to-Speech (TTS)
+
+Calls the speech API with a fixed sample phrase and reports audio byte size on success.
+
+### Speech-to-Text (STT)
+
+Generates a short silent WAV, sends it to transcriptions, and shows the returned text.
+
+### Video
+
+Flow:
+
+1. `POST https://api.portkey.ai/v1/videos` — create job (needs `x-portkey-provider`)
+2. `GET https://api.portkey.ai/v1/videos/{id}` — poll every 5s (8 minute timeout) with rotating status messages
+3. `GET https://api.portkey.ai/v1/videos/{id}/content` — download through Portkey (no OpenRouter login required)
+
+**Default prompt** (overridable): a meme-style clip of a CS student celebrating when code finally compiles.
+
+**Saved files** go under `video/` in the project root:
+
+```text
+video/portkey-video-YYYYMMDD-HHMMSS-<model-slug>.mp4
 ```
-🔑 Portkey AI Gateway Tester
-============================================================
 
-Enter your Portkey API key: ###
-Enter config ID (optional, press Enter to skip): 
-Enter model slugs (comma-separated): cohere-embed-v3
+That folder is gitignored. Results also show the Portkey content URL (use your Portkey API key + provider header — browser OpenRouter links will not work for gateway-only users).
 
-🔧 Initializing Portkey client...
+Example video session:
 
-📊 Testing 1 model(s)...
-
-🧪 Testing model: cohere-embed-v3
-------------------------------------------------------------
-✅ Response Success! API Key is working.
-   Requested model: cohere-embed-v3
-   Endpoint used: embeddings
-   Response from model: Cohere-embed-v3-multilingual
-   ⏱️  Response time: 0.87s
-   ➜ Please verify this is the correct routing for your config.
-
-   Embedding dimension: 1024
-   Tokens used: {...}
-
-============================================================
-📋 TEST SUMMARY
-============================================================
-  ✅ PASS - cohere-embed-v3
-
-Total: 1 passed, 0 failed
-============================================================
-```
-
-### Example Session - Video
-
-```
-🔑 Portkey AI Gateway Tester
-============================================================
-
-Enter your Portkey API key: ###
-Enter config ID (optional, press Enter to skip): 
-
-Select Endpoint Type:
-1. Chat Completions (default)
-2. Embeddings
-3. Text-to-Speech (TTS)
-4. Speech-to-Text (STT)
-5. Video
-6. Auto-detect based on slug
+```text
 Enter choice (1-6): 5
-
 Enter x-portkey-provider (e.g. @openroutervideomodels): @openroutervideomodels
-Enter video prompt (optional, press Enter for default): 
+Enter video prompt (optional, press Enter for default):
 Enter model slugs (comma-separated): kwaivgi/kling-v3.0-std
 
-🔧 Initializing Portkey client...
-   Target Endpoint: video
-   Provider: @openroutervideomodels
+… spinner with humorous wait messages …
 
-📊 Running Tests
-... spinner shows create → pending → completed ...
-
-✅ kwaivgi/kling-v3.0-std - 95.12s - video
-
-Job ID: gen-vid-...
-Cost: 0.63
-Portkey content URL(s):
-https://api.portkey.ai/v1/videos/gen-vid-.../content?index=0
-Saved locally:
-/path/to/portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4
+✅ kwaivgi/kling-v3.0-std - video
+Saved locally: .../video/portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4
 ```
 
-Video uses a default meme-style sample prompt (overridable), creates a job via `POST /v1/videos`, polls `GET /v1/videos/{id}` with an indeterminate spinner (no fake %), then downloads the file via Portkey `GET /v1/videos/{id}/content` so you do not need OpenRouter login. OpenRouter `unsigned_urls` are rewritten to Portkey gateway URLs.
+## Example model slugs
 
-## Example Model Slugs
+These depend on your Portkey dashboard / virtual keys:
 
-Depending on your Portkey configuration, you can test various models. The script auto-detects the endpoint type:
+- **Chat**: `gpt-4`, `gpt-4-turbo`, `mistral-medium`, `claude-3-sonnet`, …
+- **Embeddings**: `text-embedding-3-small`, `cohere-embed-v3`, …
+- **TTS**: `tts-1`, `tts-1-hd`
+- **STT**: `whisper-1`
+- **Video**: e.g. `kwaivgi/kling-v3.0-std` (plus a video-capable provider header)
 
-### Chat Completion Models (auto-detected)
-- **OpenAI**: `gpt-4`, `gpt-4-turbo`, `gpt-3.5-turbo`
-- **Anthropic**: `claude-3-opus`, `claude-3-sonnet`, `claude-3-haiku`
-- **Mistral**: `mistral-medium`, `mistral-small`, `mistral-tiny`
-- **Custom slugs**: Any model slug configured in your Portkey dashboard
+## How it works
 
-### Embeddings Models (auto-detected with "embed" in name)
-- **OpenAI**: `text-embedding-ada-002`, `text-embedding-3-small`, `text-embedding-3-large`
-- **Cohere**: `cohere-embed-v3`, `embed-english-v3.0`, `embed-multilingual-v3.0`
-- **Custom slugs**: Any embeddings model configured in your Portkey dashboard
+1. Initialize the Portkey client with your API key (and optional config ID).
+2. For each model slug, call the selected (or auto-detected) endpoint.
+3. On auto-detect failure, try other endpoints in priority order (not used for forced Video).
+4. Print per-model status, detailed panels for successes, and a summary table.
+5. Exit `0` if all passed, `1` if any failed, `130` on Ctrl+C.
 
-### Text-to-Speech Models (auto-detected with "tts" in name)
-- **OpenAI**: `tts-1`, `tts-1-hd`
+## Plain HTTP / curl examples
 
-### Speech-to-Text Models (auto-detected with "whisper" in name)
-- **OpenAI**: `whisper-1`
-
-> **Note**: Models are routed based on their slug name:
-> - `"embed"` → `/embeddings`
-> - `"tts"` → `/audio/speech`
-> - `"whisper"` → `/audio/transcriptions`
-> - Others → `/chat/completions`
-
-## How It Works
-
-1. The script initializes a Portkey client with your API key (and optional config ID)
-2. For each model slug:
-   - **Auto-detects** the endpoint type (chat vs embeddings based on slug name)
-   - Sends a test request to the appropriate endpoint
-   - If primary endpoint fails, tries the fallback endpoint automatically
-   - Measures response time
-3. Portkey dynamically routes the request to the configured provider
-4. The script validates the response and reports:
-   - Success/failure status
-   - Which endpoint was used
-   - Actual model that responded
-   - Response time and token usage
-5. A summary shows overall test results
-
-## Plain HTTP/curl Examples
-
-If you prefer not to use the Python SDK, you can test Portkey directly with HTTP requests:
-
-### Chat Completions - Basic Request with API Key
+### Chat
 
 ```bash
 curl --request POST \
@@ -273,40 +157,14 @@ curl --request POST \
   --header 'content-type: application/json' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
   --data '{
-    "messages": [
-      {
-        "role": "system",
-        "content": "You are a helpful assistant."
-      },
-      {
-        "role": "user",
-        "content": "Say hello!"
-      }
-    ],
+    "messages": [{"role": "user", "content": "Say hello!"}],
     "model": "mistral-medium"
   }'
 ```
 
-### Chat Completions - Request with Config ID
+Add `--header 'x-portkey-config: YOUR_CONFIG_ID'` when using a config.
 
-```bash
-curl --request POST \
-  --url https://api.portkey.ai/v1/chat/completions \
-  --header 'content-type: application/json' \
-  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-config: YOUR_CONFIG_ID' \
-  --data '{
-    "messages": [
-      {
-        "role": "user",
-        "content": "Test message"
-      }
-    ],
-    "model": "gpt-4"
-  }'
-```
-
-### Embeddings - Basic Request
+### Embeddings
 
 ```bash
 curl --request POST \
@@ -314,86 +172,67 @@ curl --request POST \
   --header 'content-type: application/json' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
   --data '{
-    "input": ["Hello, world!", "Testing embeddings"],
-    "model": "text-embedding-ada-002"
-  }'
-```
-
-### Embeddings - Request with Config ID
-
-```bash
-curl --request POST \
-  --url https://api.portkey.ai/v1/embeddings \
-  --header 'content-type: application/json' \
-  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-config: YOUR_CONFIG_ID' \
-  --data '{
-    "input": ["Text to embed"],
+    "input": ["Hello, world!"],
     "model": "text-embedding-3-small"
   }'
 ```
 
-### Testing Multiple Models (bash script)
+### Video (create + poll + download)
 
 ```bash
-#!/bin/bash
+# Create
+curl --request POST \
+  --url https://api.portkey.ai/v1/videos \
+  --header 'content-type: application/json' \
+  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
+  --header 'x-portkey-provider: @openroutervideomodels' \
+  --data '{"model":"kwaivgi/kling-v3.0-std","prompt":"a rubber duck debugging at 3am"}'
 
-API_KEY="YOUR_API_KEY_HERE"
-MODELS=("mistral-medium" "gpt-4" "claude-3-opus")
+# Poll (replace JOB_ID)
+curl --request GET \
+  --url https://api.portkey.ai/v1/videos/JOB_ID \
+  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
+  --header 'x-portkey-provider: @openroutervideomodels'
 
-for model in "${MODELS[@]}"; do
-  echo "Testing $model..."
-  curl --request POST \
-    --url https://api.portkey.ai/v1/chat/completions \
-    --header 'content-type: application/json' \
-    --header "x-portkey-api-key: $API_KEY" \
-    --data "{
-      \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],
-      \"model\": \"$model\"
-    }"
-  echo ""
-done
+# Download
+curl --request GET \
+  --url 'https://api.portkey.ai/v1/videos/JOB_ID/content?index=0' \
+  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
+  --header 'x-portkey-provider: @openroutervideomodels' \
+  --output video/out.mp4
 ```
 
 ## Do Not Track
 
-For sensitive data or privacy compliance, use `debug: false` to prevent logging request/response content:
+For sensitive data, disable content logging with `debug=False` / `x-portkey-debug: false`. Only operational metrics are kept. See [Portkey Do Not Track](https://portkey.ai/docs/product/observability/logs#do-not-track).
 
-**Python SDK:**
-```python
-client = Portkey(api_key="your-key", debug=False)
-```
+> Note: this CLI does not currently toggle Do Not Track itself; set it in your Portkey config or when calling the API directly.
 
-**HTTP Header:**
-```bash
---header 'x-portkey-debug: false'
-```
+## Exit codes
 
-Only operational metrics (tokens, cost, latency) are recorded. See [Portkey Do Not Track docs](https://portkey.ai/docs/product/observability/logs#do-not-track).
-
-## Exit Codes
-
-- `0`: All tests passed
-- `1`: One or more tests failed
-- `130`: User interrupted (Ctrl+C)
+| Code | Meaning |
+|------|---------|
+| `0` | All tests passed |
+| `1` | One or more tests failed |
+| `130` | Interrupted (Ctrl+C) |
 
 ## Troubleshooting
 
-**Invalid API Key**: Ensure your Portkey API key is correct and active
-
-**Model Not Found**: Verify the model slug is configured in your Portkey dashboard
-
-**Network Errors**: Check your internet connection and Portkey service status
-
-**Config Errors**: If using a config ID, ensure it exists in your Portkey account
+| Issue | What to check |
+|-------|----------------|
+| Invalid API key | Key active in Portkey dashboard |
+| Model not found | Slug configured / virtual key correct |
+| Video `403` / Cloudflare `1010` | Unusual; the CLI sets a custom User-Agent — retry or check WAF |
+| Video poll `404` | Poll must be **GET** `/v1/videos/{id}` via Portkey |
+| OpenRouter URL needs login | Use Portkey content URL or the file under `video/` |
+| Config errors | Config ID exists and is allowed for your key |
 
 ## Requirements
 
 - Python 3.7+
-- portkey-ai SDK  
-- rich (for beautiful terminal output)
+- `portkey-ai`
+- `rich`
 
 ## License
 
-Free to use for testing your Portkey configurations.
-
+MIT — see [LICENSE](LICENSE).

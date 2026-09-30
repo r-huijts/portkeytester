@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -189,12 +190,17 @@ class TestVideoSavePath(unittest.TestCase):
     def test_includes_datetime_and_model_slug(self):
         when = datetime(2026, 9, 30, 13, 45, 12)
         path = tp.video_save_path("kwaivgi/kling-v3.0-std", when=when)
-        self.assertTrue(path.endswith("portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4"))
+        self.assertTrue(path.endswith(
+            os.path.join("video", "portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4")
+        ))
+        self.assertTrue(os.path.isdir(os.path.dirname(path)))
 
     def test_index_suffix_for_extra_outputs(self):
         when = datetime(2026, 9, 30, 13, 45, 12)
         path = tp.video_save_path("model", index=2, when=when)
-        self.assertTrue(path.endswith("portkey-video-20260930-134512-model-2.mp4"))
+        self.assertTrue(path.endswith(
+            os.path.join("video", "portkey-video-20260930-134512-model-2.mp4")
+        ))
 
 
 class TestVideoWaitStatus(unittest.TestCase):

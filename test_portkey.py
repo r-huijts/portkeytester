@@ -92,13 +92,15 @@ def portkey_video_content_url(video_id: str, index: int = 0) -> str:
 
 
 def video_save_path(model_slug: str, index: int = 0, when: Optional[datetime] = None) -> str:
-    """Local filename: portkey-video-YYYYMMDD-HHMMSS-<model-slug>[-index].mp4"""
+    """Local path under video/: portkey-video-YYYYMMDD-HHMMSS-<model-slug>[-index].mp4"""
     stamp = (when or datetime.now()).strftime("%Y%m%d-%H%M%S")
     safe_slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", model_slug).strip("._-") or "model"
     name = f"portkey-video-{stamp}-{safe_slug}"
     if index > 0:
         name = f"{name}-{index}"
-    return os.path.abspath(f"{name}.mp4")
+    out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "video")
+    os.makedirs(out_dir, exist_ok=True)
+    return os.path.join(out_dir, f"{name}.mp4")
 
 
 def download_portkey_video(

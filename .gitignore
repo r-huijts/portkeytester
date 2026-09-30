@@ -53,6 +53,8 @@ htmlcov/
 # Logs
 *.log
 
+# Generated video downloads from Video endpoint tests
+video/
 
 # Claude AI files
 .claude/
