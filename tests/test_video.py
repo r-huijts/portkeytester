@@ -129,8 +129,31 @@ class TestVideoGeneration(unittest.TestCase):
         )
         self.assertEqual(details["saved_paths"], ["/tmp/portkey-video-gen-vid-1-0.mp4"])
         self.assertEqual(details["cost"], 0.63)
+        self.assertEqual(details["prompt"], tp.VIDEO_SAMPLE_PROMPT)
         self.assertEqual(mock_req.call_count, 3)
         mock_dl.assert_called_once()
+        self.assertEqual(mock_req.call_args_list[0].kwargs["prompt"], tp.VIDEO_SAMPLE_PROMPT)
+
+    @patch("test_portkey.download_portkey_video")
+    @patch("test_portkey.time.sleep", return_value=None)
+    @patch("test_portkey.portkey_video_request")
+    def test_custom_prompt_passed_to_create(self, mock_req, _sleep, mock_dl):
+        mock_req.side_effect = [
+            (200, {"id": "gen-vid-1", "status": "pending"}),
+            (200, {
+                "status": "completed",
+                "id": "gen-vid-1",
+                "unsigned_urls": ["https://openrouter.ai/x"],
+            }),
+        ]
+        mock_dl.return_value = (True, "/tmp/out.mp4")
+        custom = "a rubber duck winning a hackathon"
+        ok, details = tp.test_video_generation(
+            "pk", "@prov", "model", prompt=custom,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(details["prompt"], custom)
+        self.assertEqual(mock_req.call_args_list[0].kwargs["prompt"], custom)
 
     @patch("test_portkey.time.sleep", return_value=None)
     @patch("test_portkey.portkey_video_request")

@@ -75,7 +75,8 @@ The script will interactively prompt you for:
 2. **Config ID** (optional): Portkey config ID for virtual keys/routing rules
 3. **Endpoint Type**: Select Chat, Embeddings, TTS, STT, Video, or Auto-detect
 4. **Provider** (Video only): Required `x-portkey-provider` value (e.g. `@openroutervideomodels`)
-5. **Model Slugs**: Comma-separated list of model identifiers
+5. **Video prompt** (Video only, optional): Press Enter for the default meme prompt, or type your own
+6. **Model Slugs**: Comma-separated list of model identifiers
 
 ### Smart Endpoint Detection
 
@@ -195,6 +196,7 @@ Select Endpoint Type:
 Enter choice (1-6): 5
 
 Enter x-portkey-provider (e.g. @openroutervideomodels): @openroutervideomodels
+Enter video prompt (optional, press Enter for default): 
 Enter model slugs (comma-separated): kwaivgi/kling-v3.0-std
 
 🔧 Initializing Portkey client...
@@ -214,7 +216,7 @@ Saved locally:
 /path/to/portkey-video-20260930-134512-kwaivgi_kling-v3.0-std.mp4
 ```
 
-Video uses a hardcoded sample prompt, creates a job via `POST /v1/videos`, polls `GET /v1/videos/{id}` with an indeterminate spinner (no fake %), then downloads the file via Portkey `GET /v1/videos/{id}/content` so you do not need OpenRouter login. OpenRouter `unsigned_urls` are rewritten to Portkey gateway URLs.
+Video uses a default meme-style sample prompt (overridable), creates a job via `POST /v1/videos`, polls `GET /v1/videos/{id}` with an indeterminate spinner (no fake %), then downloads the file via Portkey `GET /v1/videos/{id}/content` so you do not need OpenRouter login. OpenRouter `unsigned_urls` are rewritten to Portkey gateway URLs.
 
 ## Example Model Slugs
 

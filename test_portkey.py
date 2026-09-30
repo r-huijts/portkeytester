@@ -205,8 +205,10 @@ def test_video_generation(
     provider: str,
     model_slug: str,
     on_status_update=None,
+    prompt: Optional[str] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     """Create a video job via Portkey and poll until completed or timeout."""
+    video_prompt = prompt or VIDEO_SAMPLE_PROMPT
     if on_status_update:
         on_status_update("Queued — meme factory warming up...")
 
@@ -214,7 +216,7 @@ def test_video_generation(
         api_key=api_key,
         provider=provider,
         model=model_slug,
-        prompt=VIDEO_SAMPLE_PROMPT,
+        prompt=video_prompt,
     )
     if status >= 400:
         return False, {
@@ -249,7 +251,7 @@ def test_video_generation(
             api_key=api_key,
             provider=provider,
             model=model_slug,
-            prompt=VIDEO_SAMPLE_PROMPT,
+            prompt=video_prompt,
             video_id=video_id,
         )
         if status >= 400:
@@ -300,6 +302,7 @@ def test_video_generation(
                 "endpoint": "video",
                 "model": model_slug,
                 "id": video_id,
+                "prompt": video_prompt,
                 "unsigned_urls": portkey_urls,
                 "saved_paths": saved_paths,
                 "cost": cost,
@@ -351,6 +354,19 @@ def get_provider_header() -> str:
         console.print("[bold red]❌ Error: Provider cannot be empty for video tests.[/bold red]")
         sys.exit(1)
     return provider
+
+
+def get_video_prompt() -> str:
+    """Optional override for the hardcoded video sample prompt."""
+    console.print(
+        f"[dim]Default prompt:[/dim] {VIDEO_SAMPLE_PROMPT[:100]}..."
+        if len(VIDEO_SAMPLE_PROMPT) > 100
+        else f"[dim]Default prompt:[/dim] {VIDEO_SAMPLE_PROMPT}"
+    )
+    custom = console.input(
+        "[bold]Enter video prompt[/bold] [dim](optional, press Enter for default)[/dim]: "
+    ).strip()
+    return custom if custom else VIDEO_SAMPLE_PROMPT
 
 
 def get_target_endpoint_type() -> Optional[str]:
@@ -624,6 +640,7 @@ def test_model(
     on_status_update=None,
     provider: Optional[str] = None,
     api_key: Optional[str] = None,
+    video_prompt: Optional[str] = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     """
     Test a single model by auto-detecting and using the appropriate endpoint.
@@ -635,6 +652,7 @@ def test_model(
         on_status_update: Optional callback function(msg: str) to update status
         provider: Required for video — value for x-portkey-provider
         api_key: Portkey API key (used for raw HTTP video calls)
+        video_prompt: Optional prompt override for video generation
     
     Returns:
         Tuple of (success: bool, details: dict)
@@ -687,6 +705,7 @@ def test_model(
                         provider=provider,
                         model_slug=model_slug,
                         on_status_update=on_status_update,
+                        prompt=video_prompt,
                     )
                 
                 # If we got here without exception, check if it was logically successful
@@ -722,6 +741,7 @@ def test_model(
                 'saved_paths': result.get('saved_paths'),
                 'cost': result.get('cost'),
                 'id': result.get('id'),
+                'prompt': result.get('prompt'),
             })
             return True, test_details
         else:
@@ -755,8 +775,10 @@ def main():
     config_id = get_config_id()
     target_endpoint = get_target_endpoint_type()
     provider = None
+    video_prompt = None
     if target_endpoint == "video":
         provider = get_provider_header()
+        video_prompt = get_video_prompt()
     model_slugs = get_model_slugs()
     
     # Initialize Portkey client
@@ -815,6 +837,7 @@ def main():
                 on_status_update=update_status,
                 provider=provider,
                 api_key=api_key,
+                video_prompt=video_prompt,
             )
             results[model_slug] = details
 
@@ -886,6 +909,11 @@ def main():
                 panel_content.append(f"[bold]Transcription:[/bold] \"{details.get('content', '')}\"")
             elif details['endpoint'] == 'video':
                 panel_content.append(f"[bold]Job ID:[/bold] {details.get('id', 'N/A')}")
+                if details.get('prompt'):
+                    preview = details['prompt']
+                    if len(preview) > 120:
+                        preview = preview[:120] + "..."
+                    panel_content.append(f"[bold]Prompt:[/bold] [dim]{preview}[/dim]")
                 if details.get('cost') is not None:
                     panel_content.append(f"[bold]Cost:[/bold] {details['cost']}")
                 urls = details.get('unsigned_urls') or []
