@@ -32,11 +32,17 @@ class TestInterpretVideoPollPayload(unittest.TestCase):
         )
 
     def test_failed_statuses(self):
-        for status in ("failed", "error", "cancelled"):
+        for status in ("failed", "error", "cancelled", "expired"):
             self.assertEqual(
                 tp.interpret_video_poll_payload({"status": status}),
                 "failed",
             )
+
+    def test_in_progress_is_pending(self):
+        self.assertEqual(
+            tp.interpret_video_poll_payload({"status": "in_progress", "id": "gen-vid-1"}),
+            "pending",
+        )
 
 
 class TestPortkeyVideoRequest(unittest.TestCase):
@@ -67,7 +73,7 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         self.assertEqual(req.get_method(), "POST")
 
     @patch("urllib.request.urlopen")
-    def test_poll_posts_to_videos_id(self, mock_urlopen):
+    def test_poll_gets_videos_id(self, mock_urlopen):
         body = {"status": "pending", "id": "gen-vid-abc"}
         resp = MagicMock()
         resp.status = 200
@@ -89,6 +95,8 @@ class TestPortkeyVideoRequest(unittest.TestCase):
             req.full_url,
             "https://api.portkey.ai/v1/videos/gen-vid-abc",
         )
+        self.assertEqual(req.get_method(), "GET")
+        self.assertIsNone(req.data)
 
 
 class TestVideoGeneration(unittest.TestCase):

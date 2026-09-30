@@ -30,13 +30,14 @@ VIDEO_POLL_TIMEOUT_SEC = 480.0  # 8 minutes
 def interpret_video_poll_payload(payload: Dict[str, Any]) -> str:
     """Classify a video poll JSON body into a terminal or pending outcome."""
     status = (payload.get("status") or "").lower()
-    if status in ("failed", "error", "cancelled"):
+    if status in ("failed", "error", "cancelled", "expired"):
         return "failed"
     if status == "completed":
         urls = payload.get("unsigned_urls") or []
         if isinstance(urls, list) and len(urls) > 0:
             return "completed"
         return "completed_no_urls"
+    # pending, in_progress, or unknown → keep polling
     return "pending"
 
 
@@ -47,27 +48,31 @@ def portkey_video_request(
     prompt: str,
     video_id: Optional[str] = None,
 ) -> Tuple[int, Dict[str, Any]]:
-    """POST create or poll against Portkey /v1/videos (raw HTTP)."""
+    """Create (POST) or poll (GET) against Portkey /v1/videos (raw HTTP)."""
     import urllib.request
     import urllib.error
 
-    url = "https://api.portkey.ai/v1/videos"
-    if video_id:
-        url = f"{url}/{video_id}"
+    headers = {
+        "Accept": "application/json",
+        "User-Agent": "portkey-tester/1.0",
+        "x-portkey-api-key": api_key,
+        "x-portkey-provider": provider,
+    }
 
-    payload = json.dumps({"model": model, "prompt": prompt}).encode()
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "User-Agent": "portkey-tester/1.0",
-            "x-portkey-api-key": api_key,
-            "x-portkey-provider": provider,
-        },
-        method="POST",
-    )
+    if video_id:
+        # OpenRouter video status is GET /v1/videos/{id} (no body)
+        url = f"https://api.portkey.ai/v1/videos/{video_id}"
+        req = urllib.request.Request(url, headers=headers, method="GET")
+    else:
+        url = "https://api.portkey.ai/v1/videos"
+        headers["Content-Type"] = "application/json"
+        payload = json.dumps({"model": model, "prompt": prompt}).encode()
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers=headers,
+            method="POST",
+        )
     try:
         with urllib.request.urlopen(req) as resp:
             raw = resp.read().decode(errors="replace")
