@@ -4,14 +4,14 @@ A command-line tool to test multiple models through the Portkey AI gateway using
 
 ## Features
 
-- 🔑 Test Portkey API keys
-- 🎯 Support for multiple model types (chat, embeddings, TTS, STT)
-- 🤖 Auto-detects endpoint type based on model slug
+- 🎯 Support for multiple model types (chat, embeddings, TTS, STT, video)
+- 🤖 Auto-detects endpoint type based on model slug (video is explicit only)
 - ⚙️ Optional config ID/header support
 - 🔒 **Do Not Track support** for sensitive data compliance
 - 📊 Clear success/error reporting with response time
 - 🚀 Dynamic model routing via Portkey
 - 🔄 Automatic fallback if primary endpoint fails
+- 🎬 Video generation: create job, poll until complete, print `unsigned_urls`
 - 🎨 Beautiful terminal output with Rich library
   - Animated progress bars and spinners
   - Formatted tables with multiple columns
@@ -73,8 +73,9 @@ The script will interactively prompt you for:
 
 1. **Portkey API Key**: Your `x-portkey-api-key` value
 2. **Config ID** (optional): Portkey config ID for virtual keys/routing rules
-3. **Endpoint Type**: Select Chat, Embeddings, TTS, STT, or Auto-detect
-4. **Model Slugs**: Comma-separated list of model identifiers
+3. **Endpoint Type**: Select Chat, Embeddings, TTS, STT, Video, or Auto-detect
+4. **Provider** (Video only): Required `x-portkey-provider` value (e.g. `@openroutervideomodels`)
+5. **Model Slugs**: Comma-separated list of model identifiers
 
 ### Smart Endpoint Detection
 
@@ -83,6 +84,8 @@ The script **automatically detects** which endpoint to use based on the model sl
 - Models containing `"tts"` → Uses **text-to-speech endpoint** (`/audio/speech`)
 - Models containing `"whisper"` → Uses **speech-to-text endpoint** (`/audio/transcriptions`)
 - All other models → Uses **chat completions endpoint** (`/chat/completions`)
+
+**Video** is never auto-detected — select it explicitly from the menu.
 
 **Fallback Logic**: If the auto-detected endpoint fails, the script automatically tries the other endpoint.
 
@@ -107,8 +110,9 @@ Select Endpoint Type:
 2. Embeddings
 3. Text-to-Speech (TTS)
 4. Speech-to-Text (STT)
-5. Auto-detect based on slug
-Enter choice (1-5): 1
+5. Video
+6. Auto-detect based on slug
+Enter choice (1-6): 1
 
 Enter model slugs (comma-separated): mistral-large
 
@@ -171,6 +175,44 @@ Enter model slugs (comma-separated): cohere-embed-v3
 Total: 1 passed, 0 failed
 ============================================================
 ```
+
+### Example Session - Video
+
+```
+🔑 Portkey AI Gateway Tester
+============================================================
+
+Enter your Portkey API key: ###
+Enter config ID (optional, press Enter to skip): 
+
+Select Endpoint Type:
+1. Chat Completions (default)
+2. Embeddings
+3. Text-to-Speech (TTS)
+4. Speech-to-Text (STT)
+5. Video
+6. Auto-detect based on slug
+Enter choice (1-6): 5
+
+Enter x-portkey-provider (e.g. @openroutervideomodels): @openroutervideomodels
+Enter model slugs (comma-separated): kwaivgi/kling-v3.0-std
+
+🔧 Initializing Portkey client...
+   Target Endpoint: video
+   Provider: @openroutervideomodels
+
+📊 Running Tests
+... spinner shows create → pending → completed ...
+
+✅ kwaivgi/kling-v3.0-std - 95.12s - video
+
+Job ID: gen-vid-...
+Cost: 0.63
+Video URL(s):
+https://openrouter.ai/api/v1/videos/.../content?index=0
+```
+
+Video uses a hardcoded sample prompt, creates a job via `POST /v1/videos`, then polls `POST /v1/videos/{id}` every 5s (8 minute timeout) until `status` is `completed` and prints `unsigned_urls`.
 
 ## Example Model Slugs
 

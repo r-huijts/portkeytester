@@ -191,6 +191,17 @@ def get_config_id() -> Optional[str]:
     return config_id if config_id else None
 
 
+def get_provider_header() -> str:
+    """Prompt for required x-portkey-provider (video mode)."""
+    provider = console.input(
+        "[bold]Enter x-portkey-provider[/bold] [dim](e.g. @openroutervideomodels)[/dim]: "
+    ).strip()
+    if not provider:
+        console.print("[bold red]❌ Error: Provider cannot be empty for video tests.[/bold red]")
+        sys.exit(1)
+    return provider
+
+
 def get_target_endpoint_type() -> Optional[str]:
     """Prompt user to select the target endpoint type."""
     console.print("\n[bold]Select Endpoint Type:[/bold]")
@@ -198,26 +209,24 @@ def get_target_endpoint_type() -> Optional[str]:
     console.print("2. [cyan]Embeddings[/cyan]")
     console.print("3. [cyan]Text-to-Speech[/cyan] (TTS)")
     console.print("4. [cyan]Speech-to-Text[/cyan] (STT)")
-    console.print("5. [dim]Auto-detect based on slug[/dim]")
-    
-    choice = console.input("[bold]Enter choice (1-5):[/bold] ").strip()
-    
-    if choice == '1':
-        return 'chat'
-    elif choice == '2':
-        return 'embeddings'
-    elif choice == '3':
-        return 'tts'
-    elif choice == '4':
-        return 'stt'
-    elif choice == '5':
+    console.print("5. [cyan]Video[/cyan]")
+    console.print("6. [dim]Auto-detect based on slug[/dim]")
+
+    choice = console.input("[bold]Enter choice (1-6):[/bold] ").strip()
+
+    if choice == "1" or not choice:
+        return "chat"
+    if choice == "2":
+        return "embeddings"
+    if choice == "3":
+        return "tts"
+    if choice == "4":
+        return "stt"
+    if choice == "5":
+        return "video"
+    if choice == "6":
         return None
-    else:
-        # Default to chat if invalid or empty (common behavior) or auto-detect?
-        # Let's default to auto-detect for safety if they just hit enter without reading
-        if not choice:
-            return 'chat' # Default to chat as per menu
-        return None
+    return None
 
 def get_model_slugs() -> List[str]:
     """Prompt user for model slugs (comma-separated)."""
@@ -242,19 +251,15 @@ def get_endpoint_priorities(model_slug: str, forced_type: Optional[str] = None) 
     
     Args:
         model_slug: Model identifier
-        forced_type: Optional forced endpoint type ('chat', 'embeddings', 'tts', 'stt')
+        forced_type: Optional forced endpoint type ('chat', 'embeddings', 'tts', 'stt', 'video')
     
     Returns:
-        List of endpoint strings ('chat', 'embeddings', 'tts', 'stt')
+        List of endpoint strings ('chat', 'embeddings', 'tts', 'stt', 'video')
     """
     if forced_type:
-        # Validate forced type
-        valid_types = ['chat', 'embeddings', 'tts', 'stt']
+        valid_types = ['chat', 'embeddings', 'tts', 'stt', 'video']
         if forced_type in valid_types:
             return [forced_type]
-        # If invalid, warn and fall back to auto-detect (or could error out)
-        # For now, let's just fall back but maybe we should be strict
-        pass
 
     slug = model_slug.lower()
     if 'embed' in slug:
@@ -264,7 +269,7 @@ def get_endpoint_priorities(model_slug: str, forced_type: Optional[str] = None) 
     if 'whisper' in slug:
         return ['stt', 'chat', 'embeddings', 'tts']
     
-    # Default priority
+    # Default priority — video is never auto-detected
     return ['chat', 'embeddings', 'tts', 'stt']
 
 def test_text_to_speech(client: Portkey, model_slug: str) -> Tuple[bool, Dict[str, Any]]:
@@ -461,7 +466,14 @@ def test_embeddings(client: Portkey, model_slug: str) -> Tuple[bool, Dict[str, A
     }
 
 
-def test_model(client: Portkey, model_slug: str, forced_type: Optional[str] = None, on_status_update=None) -> Tuple[bool, Dict[str, Any]]:
+def test_model(
+    client: Portkey,
+    model_slug: str,
+    forced_type: Optional[str] = None,
+    on_status_update=None,
+    provider: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> Tuple[bool, Dict[str, Any]]:
     """
     Test a single model by auto-detecting and using the appropriate endpoint.
     
@@ -470,6 +482,8 @@ def test_model(client: Portkey, model_slug: str, forced_type: Optional[str] = No
         model_slug: Model identifier to test
         forced_type: Optional forced endpoint type
         on_status_update: Optional callback function(msg: str) to update status
+        provider: Required for video — value for x-portkey-provider
+        api_key: Portkey API key (used for raw HTTP video calls)
     
     Returns:
         Tuple of (success: bool, details: dict)
@@ -511,6 +525,18 @@ def test_model(client: Portkey, model_slug: str, forced_type: Optional[str] = No
                     success, result = test_text_to_speech(client, model_slug)
                 elif endpoint == 'stt':
                     success, result = test_speech_to_text(client, model_slug)
+                elif endpoint == 'video':
+                    resolved_key = api_key or getattr(client, 'api_key', None)
+                    if not provider:
+                        raise ValueError("provider is required for video tests")
+                    if not resolved_key:
+                        raise ValueError("api_key is required for video tests")
+                    success, result = test_video_generation(
+                        api_key=resolved_key,
+                        provider=provider,
+                        model_slug=model_slug,
+                        on_status_update=on_status_update,
+                    )
                 
                 # If we got here without exception, check if it was logically successful
                 if success:
@@ -535,12 +561,15 @@ def test_model(client: Portkey, model_slug: str, forced_type: Optional[str] = No
             test_details.update({
                 'success': True,
                 'endpoint': result['endpoint'],
-                'response_model': result['model'],
+                'response_model': result.get('model'),
                 'response_time': response_time,
                 'content': result.get('content'),
                 'dimension': result.get('dimension'),
                 'audio_size': result.get('audio_size'),
-                'usage': result.get('usage')
+                'usage': result.get('usage'),
+                'unsigned_urls': result.get('unsigned_urls'),
+                'cost': result.get('cost'),
+                'id': result.get('id'),
             })
             return True, test_details
         else:
@@ -572,6 +601,9 @@ def main():
     api_key = get_api_key()
     config_id = get_config_id()
     target_endpoint = get_target_endpoint_type()
+    provider = None
+    if target_endpoint == "video":
+        provider = get_provider_header()
     model_slugs = get_model_slugs()
     
     # Initialize Portkey client
@@ -584,6 +616,8 @@ def main():
     
     if target_endpoint:
         console.print(f"   [dim]Target Endpoint:[/dim] {target_endpoint}")
+    if provider:
+        console.print(f"   [dim]Provider:[/dim] {provider}")
     
     client = Portkey(**client_kwargs)
     
@@ -612,7 +646,14 @@ def main():
             def update_status(msg):
                 progress.update(task, description=f"[cyan]{model_slug}: {msg}")
                 
-            success, details = test_model(client, model_slug, forced_type=target_endpoint, on_status_update=update_status)
+            success, details = test_model(
+                client,
+                model_slug,
+                forced_type=target_endpoint,
+                on_status_update=update_status,
+                provider=provider,
+                api_key=api_key,
+            )
             results[model_slug] = details
             
             progress.advance(task)
@@ -681,6 +722,14 @@ def main():
                 panel_content.append(f"[dim]Audio content received successfully[/dim]")
             elif details['endpoint'] == 'stt':
                 panel_content.append(f"[bold]Transcription:[/bold] \"{details.get('content', '')}\"")
+            elif details['endpoint'] == 'video':
+                panel_content.append(f"[bold]Job ID:[/bold] {details.get('id', 'N/A')}")
+                if details.get('cost') is not None:
+                    panel_content.append(f"[bold]Cost:[/bold] {details['cost']}")
+                urls = details.get('unsigned_urls') or []
+                panel_content.append("[bold]Video URL(s):[/bold]")
+                for u in urls:
+                    panel_content.append(f"[cyan]{u}[/cyan]")
             
             # Create the panel
             success_panel = Panel(
@@ -717,12 +766,21 @@ def main():
     
     for model_slug, details in results.items():
         if details['success']:
+            if details.get('endpoint') == 'video':
+                urls = details.get('unsigned_urls') or []
+                if urls:
+                    first = urls[0]
+                    detail_cell = (first[:60] + "...") if len(first) > 60 else first
+                else:
+                    detail_cell = 'N/A'
+            else:
+                detail_cell = details['response_model'] or 'N/A'
             table.add_row(
                 "[green]✅ PASS[/green]", 
                 model_slug,
                 details['endpoint'] or 'N/A',
                 f"{details['response_time']:.2f}s",
-                details['response_model'] or 'N/A'
+                detail_cell
             )
         else:
             error_msg = details['error']['type'] if isinstance(details['error'], dict) else str(details['error'])
