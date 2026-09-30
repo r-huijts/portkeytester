@@ -212,7 +212,7 @@ Video URL(s):
 https://openrouter.ai/api/v1/videos/.../content?index=0
 ```
 
-Video uses a hardcoded sample prompt, creates a job via `POST /v1/videos`, then polls `POST /v1/videos/{id}` every 5s (8 minute timeout) until `status` is `completed` and prints `unsigned_urls`.
+Video uses a hardcoded sample prompt, creates a job via `POST /v1/videos`, then polls `GET /v1/videos/{id}` every 5s (8 minute timeout) until `status` is `completed` and prints `unsigned_urls`.
 
 ## Example Model Slugs
 
