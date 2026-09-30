@@ -131,14 +131,6 @@ class TestVideoGeneration(unittest.TestCase):
         self.assertEqual(mock_req.call_count, 3)
         mock_dl.assert_called_once()
 
-
-class TestPortkeyVideoContentUrl(unittest.TestCase):
-    def test_builds_portkey_url(self):
-        self.assertEqual(
-            tp.portkey_video_content_url("gen-vid-1", 0),
-            "https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0",
-        )
-
     @patch("test_portkey.time.sleep", return_value=None)
     @patch("test_portkey.portkey_video_request")
     def test_create_missing_id_fails(self, mock_req, _sleep):
@@ -159,6 +151,14 @@ class TestPortkeyVideoContentUrl(unittest.TestCase):
         ok, details = tp.test_video_generation("pk", "@prov", "model")
         self.assertFalse(ok)
         self.assertIn("timeout", str(details.get("error", "")).lower())
+
+
+class TestPortkeyVideoContentUrl(unittest.TestCase):
+    def test_builds_portkey_url(self):
+        self.assertEqual(
+            tp.portkey_video_content_url("gen-vid-1", 0),
+            "https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0",
+        )
 
 
 if __name__ == "__main__":
