@@ -202,11 +202,6 @@ curl --request GET \
   --output video/out.mp4
 ```
 
-## Do Not Track
-
-For sensitive data, disable content logging with `debug=False` / `x-portkey-debug: false`. Only operational metrics are kept. See [Portkey Do Not Track](https://portkey.ai/docs/product/observability/logs#do-not-track).
-
-> Note: this CLI does not currently toggle Do Not Track itself; set it in your Portkey config or when calling the API directly.
 
 ## Exit codes
 
