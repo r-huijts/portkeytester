@@ -84,7 +84,7 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         self.assertEqual(data["id"], "gen-vid-abc")
 
         req = mock_urlopen.call_args[0][0]
-        self.assertEqual(req.full_url, "https://api.portkey.ai/v1/videos")
+        self.assertEqual(req.full_url, "https://api.portkey.ai/v1/proxy/videos")
         self.assertEqual(req.get_header("X-portkey-api-key"), "pk-test")
         self.assertEqual(req.get_header("X-portkey-config"), "cfg-123")
         self.assertEqual(req.get_header("X-portkey-provider"), "@openroutervideomodels")
@@ -116,7 +116,7 @@ class TestPortkeyVideoRequest(unittest.TestCase):
         req = mock_urlopen.call_args[0][0]
         self.assertEqual(
             req.full_url,
-            "https://api.portkey.ai/v1/videos/gen-vid-abc",
+            "https://api.portkey.ai/v1/proxy/videos/gen-vid-abc",
         )
         self.assertEqual(req.get_method(), "GET")
         self.assertIsNone(req.data)
@@ -213,7 +213,7 @@ class TestPortkeyVideoContentUrl(unittest.TestCase):
     def test_builds_portkey_url(self):
         self.assertEqual(
             tp.portkey_video_content_url("gen-vid-1", 0),
-            "https://api.portkey.ai/v1/videos/gen-vid-1/content?index=0",
+            "https://api.portkey.ai/v1/proxy/videos/gen-vid-1/content?index=0",
         )
 
 

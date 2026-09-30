@@ -65,9 +65,10 @@ VIDEO_WAIT_MESSAGES = (
     "The hamster wheel has entered turbo mode...",
 )
 
+# Portkey first-class /v1/videos often 404s for OpenRouter video; use proxy passthrough.
+PORTKEY_VIDEO_API_BASE = "https://api.portkey.ai/v1/proxy/videos"
+
 # Tester slug → metadata.video_route + AI Provider + upstream model.
-# Portkey /v1/videos needs x-portkey-provider for auth; metadata carries the
-# route through create → poll → download for conditional config.
 VIDEO_ROUTES = {
     "veo": {
         "route": "veo",
@@ -120,7 +121,7 @@ def interpret_video_poll_payload(payload: Dict[str, Any]) -> str:
 
 def portkey_video_content_url(video_id: str, index: int = 0) -> str:
     """Build a Portkey gateway URL for video content (not the OpenRouter URL)."""
-    return f"https://api.portkey.ai/v1/videos/{video_id}/content?index={index}"
+    return f"{PORTKEY_VIDEO_API_BASE}/{video_id}/content?index={index}"
 
 
 def video_save_path(model_slug: str, index: int = 0, when: Optional[datetime] = None) -> str:
@@ -212,11 +213,11 @@ def portkey_video_request(
         headers["x-portkey-config"] = config_id
 
     if video_id:
-        # OpenRouter video status is GET /v1/videos/{id} (no body)
-        url = f"https://api.portkey.ai/v1/videos/{video_id}"
+        # OpenRouter video status is GET …/videos/{id} (no body)
+        url = f"{PORTKEY_VIDEO_API_BASE}/{video_id}"
         req = urllib.request.Request(url, headers=headers, method="GET")
     else:
-        url = "https://api.portkey.ai/v1/videos"
+        url = PORTKEY_VIDEO_API_BASE
         headers["Content-Type"] = "application/json"
         payload = json.dumps({"model": model, "prompt": prompt}).encode()
         req = urllib.request.Request(

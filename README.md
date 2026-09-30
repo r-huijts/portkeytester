@@ -100,17 +100,16 @@ Generates a short silent WAV, sends it to transcriptions, and shows the returned
 
 Flow (config chooses the upstream provider — no `x-portkey-provider` header):
 
-1. `POST https://api.portkey.ai/v1/videos` — create job with `model` + `x-portkey-metadata: {"video_route":"<route>"}`
-2. `GET https://api.portkey.ai/v1/videos/{id}` — poll every 5s (8 minute timeout); same metadata so GETs still route correctly
-3. `GET https://api.portkey.ai/v1/videos/{id}/content` — download through Portkey with the same metadata
+1. `POST https://api.portkey.ai/v1/proxy/videos` — create (OpenRouter video via Portkey proxy passthrough)
+2. `GET https://api.portkey.ai/v1/proxy/videos/{id}` — poll every 5s
+3. `GET https://api.portkey.ai/v1/proxy/videos/{id}/content` — download through Portkey
 
 **Routing:** type the short slug `veo`. The tester sends on create/poll/download:
 
-- `x-portkey-provider: @openroutervideomodels` — required for Portkey `/v1/videos` auth (AI Provider slug)
+- `x-portkey-provider: @openroutervideomodels` — required for auth (AI Provider slug)
 - `x-portkey-metadata: {"video_route":"veo"}` — for config conditions on poll/download
 - body `model: "google/veo-3.1-fast"` on create
-
-`VIDEO_ROUTES` in `test_portkey.py` owns the mapping. Metadata alone / `@provider/model` in the body was not enough for this endpoint (401 with `custom_host`, 404 without).
+- URLs use `/v1/proxy/videos` (passthrough). Plain `/v1/videos` returned Portkey `404 Not Found` for this provider.
 
 **Default prompt** (overridable): a meme-style clip of a CS student celebrating when code finally compiles.
 
@@ -190,7 +189,7 @@ curl --request POST \
 ```bash
 # Create
 curl --request POST \
-  --url https://api.portkey.ai/v1/videos \
+  --url https://api.portkey.ai/v1/proxy/videos \
   --header 'content-type: application/json' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
   --header 'x-portkey-provider: @openroutervideomodels' \
@@ -199,14 +198,14 @@ curl --request POST \
 
 # Poll (replace JOB_ID)
 curl --request GET \
-  --url https://api.portkey.ai/v1/videos/JOB_ID \
+  --url https://api.portkey.ai/v1/proxy/videos/JOB_ID \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
   --header 'x-portkey-provider: @openroutervideomodels' \
   --header 'x-portkey-metadata: {"video_route":"veo"}'
 
 # Download
 curl --request GET \
-  --url 'https://api.portkey.ai/v1/videos/JOB_ID/content?index=0' \
+  --url 'https://api.portkey.ai/v1/proxy/videos/JOB_ID/content?index=0' \
   --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
   --header 'x-portkey-provider: @openroutervideomodels' \
   --header 'x-portkey-metadata: {"video_route":"veo"}' \
@@ -229,8 +228,8 @@ curl --request GET \
 | Invalid API key | Key active in Portkey dashboard |
 | Model not found | Slug configured / virtual key correct |
 | Video `403` / Cloudflare `1010` | Unusual; the CLI sets a custom User-Agent — retry or check WAF |
-| Video poll `404` | Poll must be **GET** `/v1/videos/{id}` via Portkey |
-| Video wrong provider / default model | Ensure config ID is set and `metadata.video_route` matches a condition (e.g. `veo`) |
+| Video poll `404` | Use `/v1/proxy/videos` (tester default); confirm AI Provider slug |
+| Video create `404` on `/v1/videos` | Portkey may not expose OpenRouter video on the unified route — proxy path required |
 | Unknown video model slug | Use a key from `VIDEO_ROUTES` (currently `veo`) or add a mapping |
 | OpenRouter URL needs login | Use Portkey content URL or the file under `video/` |
 | Config errors | Config ID exists and is allowed for your key |
