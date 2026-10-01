@@ -43,7 +43,7 @@ python test_portkey.py
 | 2 | Config ID | Optional — press Enter to skip (recommended for video routing) |
 | 3 | Endpoint type | See menu below |
 | 4 | Video prompt | **Video only** — Enter = default meme prompt, or type your own |
-| 5 | Model slugs | Comma-separated (video: use a known route slug, e.g. `veo`) |
+| 5 | Model slugs | Comma-separated (video: any alias your Portkey config maps, e.g. `veo`, `runway`) |
 
 ### Endpoint menu
 
@@ -74,7 +74,7 @@ python test_portkey.py
 | `whisper` | Speech-to-Text |
 | *(anything else)* | Chat |
 
-**Video is never auto-detected** — choose menu option `5`.
+**Video is never auto-detected** — choose menu option `5`. Server-side aliases like `veo` / `runway` cannot be inferred locally.
 
 Examples: `cohere-embed-v3` → embeddings · `tts-1` → TTS · `whisper-1` → STT · `mistral-large` → chat.
 
@@ -98,18 +98,13 @@ Generates a short silent WAV, sends it to transcriptions, and shows the returned
 
 ### Video
 
-Flow (config chooses the upstream provider — no `x-portkey-provider` header):
+Flow (attached Portkey config handles provider, metadata, and upstream host — client sends only the API key):
 
-1. `POST https://api.portkey.ai/v1/proxy/videos` — create (OpenRouter video via Portkey proxy passthrough)
-2. `GET https://api.portkey.ai/v1/proxy/videos/{id}` — poll every 5s
-3. `GET https://api.portkey.ai/v1/proxy/videos/{id}/content` — download through Portkey
+1. `POST https://api.portkey.ai/v1/videos` — create
+2. `GET https://api.portkey.ai/v1/videos/{id}` — poll every 5s
+3. `GET https://api.portkey.ai/v1/videos/{id}/content` — download through Portkey
 
-**Routing:** type the short slug `veo`. The tester sends on create/poll/download:
-
-- `x-portkey-provider: @openroutervideomodels` — required for auth (AI Provider slug)
-- `x-portkey-metadata: {"video_route":"veo"}` — for config conditions on poll/download
-- body `model: "google/veo-3.1-fast"` on create
-- URLs use `/v1/proxy/videos` (passthrough). Plain `/v1/videos` returned Portkey `404 Not Found` for this provider.
+**Client contract:** Portkey API key + any model string in the JSON body (passed through unchanged). No local allowlist or mapping — your attached Portkey config decides `veo` → `google/veo-3.1-fast`, `runway` → `runway/gen-4.5`, etc. No provider header, metadata, custom host, or `x-portkey-config` on video requests.
 
 **Default prompt** (overridable): a meme-style clip of a CS student celebrating when code finally compiles.
 
@@ -127,24 +122,23 @@ Example video session:
 Enter config ID (optional, press Enter to skip): YOUR_CONFIG_ID
 Enter choice (1-6): 5
 Enter video prompt (optional, press Enter for default):
-Enter model slugs (comma-separated): veo
+Enter model slugs (comma-separated): veo,runway
 
 … spinner with humorous wait messages …
 
 ✅ veo - video
-Video route: veo
 Saved locally: .../video/portkey-video-20260930-134512-veo.mp4
 ```
 
 ## Example model slugs
 
-These depend on your Portkey dashboard / virtual keys:
+These depend on your Portkey dashboard / attached config:
 
 - **Chat**: `gpt-4`, `gpt-4-turbo`, `mistral-medium`, `claude-3-sonnet`, …
 - **Embeddings**: `text-embedding-3-small`, `cohere-embed-v3`, …
 - **TTS**: `tts-1`, `tts-1-hd`
 - **STT**: `whisper-1`
-- **Video**: `veo` (maps to `metadata.video_route=veo` in config; add more entries in `VIDEO_ROUTES` as you add targets)
+- **Video**: whatever aliases your config defines (e.g. `veo`, `runway`) — the tester does not validate them
 
 ## How it works
 
@@ -188,27 +182,23 @@ curl --request POST \
 
 ```bash
 # Create
-curl --request POST \
-  --url https://api.portkey.ai/v1/proxy/videos \
-  --header 'content-type: application/json' \
-  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-provider: @openroutervideomodels' \
-  --header 'x-portkey-metadata: {"video_route":"veo"}' \
-  --data '{"model":"google/veo-3.1-fast","prompt":"a rubber duck debugging at 3am"}'
+curl -i -X POST 'https://api.portkey.ai/v1/videos' \
+  -H 'x-portkey-api-key: YOUR_PORTKEY_API_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "veo",
+    "prompt": "A cinematic tracking shot through a rainy neon city at night"
+  }'
 
 # Poll (replace JOB_ID)
-curl --request GET \
-  --url https://api.portkey.ai/v1/proxy/videos/JOB_ID \
-  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-provider: @openroutervideomodels' \
-  --header 'x-portkey-metadata: {"video_route":"veo"}'
+curl -i \
+  'https://api.portkey.ai/v1/videos/JOB_ID' \
+  -H 'x-portkey-api-key: YOUR_PORTKEY_API_KEY'
 
 # Download
-curl --request GET \
-  --url 'https://api.portkey.ai/v1/proxy/videos/JOB_ID/content?index=0' \
-  --header 'x-portkey-api-key: YOUR_API_KEY_HERE' \
-  --header 'x-portkey-provider: @openroutervideomodels' \
-  --header 'x-portkey-metadata: {"video_route":"veo"}' \
+curl -i \
+  'https://api.portkey.ai/v1/videos/JOB_ID/content?index=0' \
+  -H 'x-portkey-api-key: YOUR_PORTKEY_API_KEY' \
   --output video/out.mp4
 ```
 
@@ -228,9 +218,9 @@ curl --request GET \
 | Invalid API key | Key active in Portkey dashboard |
 | Model not found | Slug configured / virtual key correct |
 | Video `403` / Cloudflare `1010` | Unusual; the CLI sets a custom User-Agent — retry or check WAF |
-| Video poll `404` | Use `/v1/proxy/videos` (tester default); confirm AI Provider slug |
-| Video create `404` on `/v1/videos` | Portkey may not expose OpenRouter video on the unified route — proxy path required |
-| Unknown video model slug | Use a key from `VIDEO_ROUTES` (currently `veo`) or add a mapping |
+| Video `404` with OpenRouter `x-matched-path` | Attached config/provider custom host must yield `…/api/v1/videos` |
+| Video create/poll fails without provider header | Use an API key with the video config attached; pathname `/videos*` must select the veo target |
+| Video model rejected by Portkey | Alias must be mapped in the attached config (tester passes the string through unchanged) |
 | OpenRouter URL needs login | Use Portkey content URL or the file under `video/` |
 | Config errors | Config ID exists and is allowed for your key |
 
