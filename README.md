@@ -11,6 +11,22 @@ A command-line tool to smoke-test models through the [Portkey AI gateway](https:
 - Rich terminal UI: spinners, tables, success/error panels
 - Video: create → poll → download via Portkey into a local `video/` folder
 
+## Related: Cursor → Portkey proxy
+
+This tester can confirm that a Portkey API key and model (such as `kimi-k2.7-code`) work. Using that model from **Cursor IDE** is a separate problem: Cursor blocks local/private endpoints and treats some model names as reserved.
+
+Normally you would solve the model-name mapping inside **Portkey** itself (a Portkey config that maps a custom model name to the real provider/model). This proxy is a **workaround for when you only have an API key** and no access to the Portkey dashboard or configuration.
+
+The proxy:
+
+1. Gives Cursor a public endpoint (via Caddy on a VPS)
+2. Rewrites a custom Cursor model name to the real Portkey model
+3. Keeps the Portkey API key on the server
+
+See the full setup guide:
+
+- [cursor-portkey-proxy/README.md](cursor-portkey-proxy/README.md)
+
 ## Installation
 
 ### Quick setup (recommended)
